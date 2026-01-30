@@ -1,38 +1,32 @@
-import os
-# --- CRITICAL FIX: FORCE LEGACY KERAS ---
-os.environ["TF_USE_LEGACY_KERAS"] = "1"
-# ----------------------------------------
-
 import streamlit as st
 import tensorflow as tf
 import numpy as np
 import requests
 from PIL import Image
+import os
 import gdown
-import cv2
 import openai
-import json
 import matplotlib.cm as cm
 
 # --- CONFIGURATION ---
 MODEL_FILE_ID = '1NzmXgv3nDe0xorHoxhWF06cYLd21UMM4'
 MODEL_FILENAME = 'corn_model.h5'
 
-CLASS_NAMES = [
-    'Maize_Blight',
-    'Maize_Common_Rust',
-    'Maize_Gray_Leaf_Spot',
-    'Maize_Healthy',
-    'Weed_Broadleaf',
-    'Weed_Grass'
-]
+CLASS_NAMES = {
+    0: 'Maize_Blight',
+    1: 'Maize_Common_Rust',
+    2: 'Maize_Gray_Leaf_Spot',
+    3: 'Maize_Healthy',
+    4: 'Weed_Broadleaf',
+    5: 'Weed_Grass'
+}
 
 st.set_page_config(page_title="Agri-Smart Advisor", layout="wide")
 
 # --- 1. MODEL LOADER ---
 @st.cache_resource
 def load_model_from_drive():
-    # Delete if corrupt/tiny
+    # If the file exists but is small (<1MB), it's corrupt. Delete it.
     if os.path.exists(MODEL_FILENAME):
         if os.path.getsize(MODEL_FILENAME) < 1000000:
             os.remove(MODEL_FILENAME)
@@ -42,7 +36,7 @@ def load_model_from_drive():
         url = f'https://drive.google.com/uc?id={MODEL_FILE_ID}'
         gdown.download(url, MODEL_FILENAME, quiet=False, fuzzy=True)
 
-    # Load model
+    # Load model (Standard load for TF 2.12)
     model = tf.keras.models.load_model(MODEL_FILENAME, compile=False)
     return model
 
@@ -95,10 +89,11 @@ def overlay_heatmap(img, heatmap, alpha=0.4):
     superimposed_img = tf.keras.preprocessing.image.array_to_img(superimposed_img)
     return superimposed_img
 
-# --- 3. OPENAI ADVICE ---
+# --- 3. OPENAI ADVICE (FROM SECRETS) ---
 def get_openai_advice(vision_results, weather):
+    # Check if key is in Secrets
     if "OPENAI_API_KEY" not in st.secrets:
-        return "⚠️ OpenAI API Key missing in Secrets."
+        return "⚠️ OpenAI API Key is missing. Please add it to Streamlit Secrets."
 
     client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
     problems = ", ".join(list(vision_results))
@@ -120,7 +115,7 @@ def get_openai_advice(vision_results, weather):
     except Exception as e:
         return f"OpenAI Error: {e}"
 
-# --- MAIN APP ---
+# --- MAIN APP UI ---
 st.title("Agri-Smart Advisor 🌽")
 
 # Sidebar
