@@ -19,15 +19,19 @@ CLASS_NAMES = [
 
 @st.cache_resource
 def load_model():
+    # SAFETY CHECK: If the file exists but is tiny (<1MB), it's probably a broken download.
+    # We delete it so we can download the real one.
     if os.path.exists(MODEL_FILENAME):
         file_size = os.path.getsize(MODEL_FILENAME)
-        if file_size < 1000000:
+        if file_size < 1000000:  # Less than 1MB
             os.remove(MODEL_FILENAME)
 
+    # Download if missing
     if not os.path.exists(MODEL_FILENAME):
         url = f'https://drive.google.com/uc?id={MODEL_FILE_ID}'
         gdown.download(url, MODEL_FILENAME, quiet=False, fuzzy=True)
 
+    # THE FIX: safe_mode=False prevents the "tuple" error
     model = tf.keras.models.load_model(MODEL_FILENAME, compile=False, safe_mode=False)
     return model
 
@@ -36,6 +40,7 @@ def predict_image(image, model):
     img_array = np.array(image)
     img_array = np.expand_dims(img_array, axis=0)
     img_array = tf.keras.applications.efficientnet_v2.preprocess_input(img_array)
+
     predictions = model.predict(img_array)
     return predictions
 
@@ -43,6 +48,7 @@ st.set_page_config(page_title="Maize Doctor")
 st.title("Maize and Weed Doctor")
 st.write("Upload a photo of a maize leaf or weed to detect diseases.")
 
+# Initialize model variable to None to prevent NameError
 model = None
 
 try:
@@ -54,6 +60,7 @@ except Exception as e:
 
 uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "png", "jpeg"])
 
+# We check if model is not None before proceeding
 if uploaded_file is not None and model is not None:
     image = Image.open(uploaded_file)
     st.image(image, caption='Uploaded Image', use_column_width=True)
