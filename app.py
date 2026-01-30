@@ -21,9 +21,9 @@ CLASS_NAMES = [
 def load_model():
     if not os.path.exists(MODEL_FILENAME):
         url = f'https://drive.google.com/uc?id={MODEL_FILE_ID}'
-        gdown.download(url, MODEL_FILENAME, quiet=False)
+        gdown.download(url, MODEL_FILENAME, quiet=False, fuzzy=True)
 
-    model = tf.keras.models.load_model(MODEL_FILENAME, compile=False)
+    model = tf.keras.models.load_model(MODEL_FILENAME, compile=False, safe_mode=False)
     return model
 
 def predict_image(image, model):
@@ -34,6 +34,8 @@ def predict_image(image, model):
 
     predictions = model.predict(img_array)
     return predictions
+
+st.set_page_config(page_title="Maize Doctor")
 
 st.title("Maize and Weed Doctor")
 st.write("Upload a photo of a maize leaf or weed to detect diseases.")
@@ -52,18 +54,19 @@ if uploaded_file is not None and model is not None:
     st.image(image, caption='Uploaded Image', use_column_width=True)
 
     if st.button("Analyze Plant"):
-        preds = predict_image(image, model)
-        class_idx = np.argmax(preds)
-        confidence = np.max(preds)
-        predicted_label = CLASS_NAMES[class_idx]
+        with st.spinner("Analyzing..."):
+            preds = predict_image(image, model)
+            class_idx = np.argmax(preds)
+            confidence = np.max(preds)
+            predicted_label = CLASS_NAMES[class_idx]
 
-        st.write("---")
-        st.subheader(f"Result: {predicted_label}")
-        st.write(f"Confidence: {confidence * 100:.2f}%")
+            st.write("---")
+            st.subheader(f"Result: {predicted_label}")
+            st.write(f"Confidence: {confidence * 100:.2f}%")
 
-        if "Healthy" in predicted_label:
-            st.success("Plant is healthy.")
-        elif "Weed" in predicted_label:
-            st.warning("Weed detected.")
-        else:
-            st.error("Disease detected.")
+            if "Healthy" in predicted_label:
+                st.success("Plant is healthy.")
+            elif "Weed" in predicted_label:
+                st.warning("Weed detected.")
+            else:
+                st.error("Disease detected.")
