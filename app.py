@@ -1,9 +1,11 @@
 import streamlit as st
+import os
+os.environ["KERAS_BACKEND"] = "tensorflow"
 import tensorflow as tf
+import keras
 import numpy as np
 import requests
 from PIL import Image
-import os
 import gdown
 import openai
 import matplotlib.cm as cm
@@ -11,7 +13,6 @@ import matplotlib.cm as cm
 # --- CONFIGURATION ---
 MODEL_FILE_ID = '1NzmXgv3nDe0xorHoxhWF06cYLd21UMM4'
 MODEL_FILENAME = 'corn_model.h5'
-
 CLASS_NAMES = {
     0: 'Maize_Blight',
     1: 'Maize_Common_Rust',
@@ -20,7 +21,6 @@ CLASS_NAMES = {
     4: 'Weed_Broadleaf',
     5: 'Weed_Grass'
 }
-
 st.set_page_config(page_title="Agri-Smart Advisor", layout="wide")
 
 # --- 1. MODEL LOADER ---
@@ -30,14 +30,12 @@ def load_model_from_drive():
     if os.path.exists(MODEL_FILENAME):
         if os.path.getsize(MODEL_FILENAME) < 1000000:
             os.remove(MODEL_FILENAME)
-
     # Download if missing
     if not os.path.exists(MODEL_FILENAME):
         url = f'https://drive.google.com/uc?id={MODEL_FILE_ID}'
         gdown.download(url, MODEL_FILENAME, quiet=False, fuzzy=True)
-
-    # Load model (Standard load for TF 2.12)
-    model = tf.keras.models.load_model(MODEL_FILENAME, compile=False)
+    # Load model
+    model = keras.models.load_model(MODEL_FILENAME, compile=False)
     return model
 
 # --- 2. WEATHER & UTILS ---
@@ -58,7 +56,7 @@ def get_real_weather(city_name):
 
 def make_gradcam_heatmap(img_array, model, last_conv_layer_name="top_activation", pred_index=None):
     try:
-        grad_model = tf.keras.models.Model(
+        grad_model = keras.Model(
             [model.inputs], [model.get_layer(last_conv_layer_name).output, model.output]
         )
         with tf.GradientTape() as tape:
@@ -82,11 +80,11 @@ def overlay_heatmap(img, heatmap, alpha=0.4):
     jet = cm.get_cmap("jet")
     jet_colors = jet(np.arange(256))[:, :3]
     jet_heatmap = jet_colors[heatmap]
-    jet_heatmap = tf.keras.preprocessing.image.array_to_img(jet_heatmap)
+    jet_heatmap = keras.utils.array_to_img(jet_heatmap)
     jet_heatmap = jet_heatmap.resize((img.shape[1], img.shape[0]))
-    jet_heatmap = tf.keras.preprocessing.image.img_to_array(jet_heatmap)
+    jet_heatmap = keras.utils.img_to_array(jet_heatmap)
     superimposed_img = jet_heatmap * alpha + img
-    superimposed_img = tf.keras.preprocessing.image.array_to_img(superimposed_img)
+    superimposed_img = keras.utils.array_to_img(superimposed_img)
     return superimposed_img
 
 # --- 3. OPENAI ADVICE (FROM SECRETS) ---
@@ -94,16 +92,15 @@ def get_openai_advice(vision_results, weather):
     # Check if key is in Secrets
     if "OPENAI_API_KEY" not in st.secrets:
         return "⚠️ OpenAI API Key is missing. Please add it to Streamlit Secrets."
-
     client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
     problems = ", ".join(list(vision_results))
-    
+   
     prompt = f"""
     You are an expert agronomist.
     Situation:
     - Crops: {problems}
     - Weather: {weather['condition']}, {weather['temperature']}C
-    
+   
     Provide a 3-step treatment plan (Chemical & Organic). Keep it under 150 words.
     """
     try:
@@ -130,14 +127,13 @@ except Exception as e:
     st.stop()
 
 uploaded_file = st.file_uploader("Upload Crop Image", type=["jpg", "png", "jpeg"])
-
 if uploaded_file and city:
     try:
         original_img = Image.open(uploaded_file).convert("RGB")
         st.image(original_img, caption="Uploaded Image", use_column_width=True)
-        
+       
         st.info("Analyzing...")
-        
+       
         # Quadrant Crop Logic
         width, height = original_img.size
         crops = {
@@ -146,21 +142,21 @@ if uploaded_file and city:
             "Bottom-Left": original_img.crop((0, height//2, width//2, height)),
             "Bottom-Right": original_img.crop((width//2, height//2, width, height))
         }
-        
+       
         found_problems = set()
         cols = st.columns(2)
-        
+       
         for i, (pos, crop_img) in enumerate(crops.items()):
             img_array = crop_img.resize((224, 224))
             img_array = np.array(img_array)
             img_batch = np.expand_dims(img_array, axis=0)
-            preprocessed_img = tf.keras.applications.efficientnet_v2.preprocess_input(img_batch.copy())
-            
+            preprocessed_img = keras.applications.efficientnet_v2.preprocess_input(img_batch.copy())
+           
             preds = model.predict(preprocessed_img, verbose=0)
             pred_index = np.argmax(preds)
             confidence = np.max(preds) * 100
             label = CLASS_NAMES[pred_index]
-            
+           
             if confidence > 60:
                 found_problems.add(label)
                 # Try GradCAM, fail silently if layer mismatch
@@ -169,12 +165,12 @@ if uploaded_file and city:
                     final_img = overlay_heatmap(img_array, heatmap) if heatmap is not None else crop_img
                 except:
                     final_img = crop_img
-                
+               
                 with cols[i % 2]:
                     st.image(final_img, caption=f"{pos}: {label} ({confidence:.1f}%)")
-        
+       
         st.divider()
-        
+       
         # Results
         weather = get_real_weather(city)
         st.subheader(f"Weather in {weather['city']}")
@@ -182,7 +178,7 @@ if uploaded_file and city:
         c1.metric("Temp", f"{weather['temperature']}°C")
         c2.metric("Sky", weather['condition'])
         c3.metric("Humidity", f"{weather['humidity']}%")
-        
+       
         st.subheader("Diagnosis & Treatment")
         if not found_problems:
             st.success("✅ Crop looks healthy!")
@@ -190,6 +186,5 @@ if uploaded_file and city:
             with st.spinner("Consulting AI Expert..."):
                 advice = get_openai_advice(found_problems, weather)
                 st.write(advice)
-
     except Exception as e:
         st.error(f"An error occurred: {e}")
