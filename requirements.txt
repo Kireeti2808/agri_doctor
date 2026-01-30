@@ -1,5 +1,9 @@
 streamlit
 tensorflow==2.17.0
 numpy<2.0.0
+requests
 Pillow
 gdown
+opencv-python-headless
+matplotlib
+openai
