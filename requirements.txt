@@ -1,10 +1,11 @@
 streamlit
-tensorflow==2.12.0
-numpy==1.23.5
+tensorflow>=2.15.0
+keras>=3.0.0
+numpy
 requests
 Pillow
 gdown
 opencv-python-headless
 matplotlib
 openai
-protobuf==3.20.3
+protobuf>=3.20,<5.0
