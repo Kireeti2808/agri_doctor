@@ -19,6 +19,11 @@ CLASS_NAMES = [
 
 @st.cache_resource
 def load_model():
+    if os.path.exists(MODEL_FILENAME):
+        file_size = os.path.getsize(MODEL_FILENAME)
+        if file_size < 1000000:
+            os.remove(MODEL_FILENAME)
+
     if not os.path.exists(MODEL_FILENAME):
         url = f'https://drive.google.com/uc?id={MODEL_FILE_ID}'
         gdown.download(url, MODEL_FILENAME, quiet=False, fuzzy=True)
@@ -31,14 +36,14 @@ def predict_image(image, model):
     img_array = np.array(image)
     img_array = np.expand_dims(img_array, axis=0)
     img_array = tf.keras.applications.efficientnet_v2.preprocess_input(img_array)
-
     predictions = model.predict(img_array)
     return predictions
 
 st.set_page_config(page_title="Maize Doctor")
-
 st.title("Maize and Weed Doctor")
 st.write("Upload a photo of a maize leaf or weed to detect diseases.")
+
+model = None
 
 try:
     with st.spinner("Loading Model..."):
