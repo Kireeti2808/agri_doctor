@@ -26,28 +26,52 @@ st.markdown("""
     .reportview-container {
         background: #f0f2f6;
     }
-    .result-card {
-        padding: 20px;
-        border-radius: 15px;
+    .result-circle {
+        width: 220px;
+        height: 220px;
+        border-radius: 50%;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
         color: white;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin: 20px auto;
+        padding: 15px;
+        box-shadow: 0 6px 10px rgba(0,0,0,0.2);
+        transition: transform 0.3s ease;
+    }
+    .result-circle:hover {
+        transform: scale(1.05);
+    }
+    .result-circle h4 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: bold;
+        color: white;
+    }
+    .result-circle p {
+        margin: 5px 0 0 0;
+        font-size: 14px;
     }
     .disease-gradient {
-        background: linear-gradient(135deg, #cb2d3e 0%, #ef473a 100%);
+        background: radial-gradient(circle at 30% 30%, #ff512f, #dd2476);
     }
     .weed-gradient {
-        background: linear-gradient(135deg, #fce38a 0%, #f38181 100%);
-        color: #4a4a4a;
+        background: radial-gradient(circle at 30% 30%, #f09819, #edde5d);
+        color: #333 !important;
+    }
+    .weed-gradient h4 {
+        color: #333 !important;
     }
     .healthy-gradient {
-        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        background: radial-gradient(circle at 30% 30%, #1D976C, #93F9B9);
     }
     .section-title {
         font-size: 24px;
         font-weight: bold;
-        margin-top: 20px;
-        margin-bottom: 10px;
+        margin-top: 30px;
+        margin-bottom: 20px;
         border-bottom: 2px solid #ddd;
         padding-bottom: 5px;
     }
@@ -185,13 +209,13 @@ if uploaded_file and city:
         
         if not found_problems:
              st.markdown(f"""
-                <div class="result-card healthy-gradient">
-                    <h3>Healthy Crop</h3>
-                    <p>No diseases or weeds detected with high confidence.</p>
+                <div class="result-circle healthy-gradient">
+                    <h4>Healthy Crop</h4>
+                    <p>No issues detected</p>
                 </div>
             """, unsafe_allow_html=True)
         else:
-            cols = st.columns(len(display_cards)) if len(display_cards) <= 2 else st.columns(2)
+            cols = st.columns(len(display_cards)) if len(display_cards) <= 3 else st.columns(3)
             
             for i, card in enumerate(display_cards):
                 if "Healthy" in card['label']:
@@ -202,13 +226,13 @@ if uploaded_file and city:
                     css_class = "disease-gradient"
 
                 html_card = f"""
-                <div class="result-card {css_class}">
+                <div class="result-circle {css_class}">
                     <h4>{card['label']}</h4>
-                    <p><b>Location:</b> {card['pos']}</p>
-                    <p><b>Confidence:</b> {card['conf']:.1f}%</p>
+                    <p><b>Loc:</b> {card['pos']}</p>
+                    <p><b>Conf:</b> {card['conf']:.1f}%</p>
                 </div>
                 """
-                with cols[i % 2]:
+                with cols[i % len(cols)]:
                     st.markdown(html_card, unsafe_allow_html=True)
                     st.image(crops[card['pos']], width=150)
 
