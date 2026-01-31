@@ -10,6 +10,45 @@ import openai
 import requests
 from collections import Counter
 
+# ==========================================
+# 1. PAGE CONFIG & CUSTOM CSS
+# ==========================================
+st.set_page_config(page_title="Agri-Doctor Pro", layout="wide", page_icon="🌿")
+
+# Custom CSS for styling
+st.markdown("""
+    <style>
+    .weather-card {
+        background-color: #f0f2f6;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 2px 2px 10px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+    .metric-container {
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+    }
+    .stButton>button {
+        width: 100%;
+        background-color: #4CAF50;
+        color: white;
+        height: 50px;
+        font-size: 18px;
+        border-radius: 8px;
+    }
+    .report-text {
+        font-size: 16px;
+        font-family: monospace;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# 2. CONFIGURATION
+# ==========================================
 CORN_MODEL_ID = '1_1PcQqUFFiK9tgpXwivM6J7OJShL18jk'
 RICE_MODEL_ID = '1p2vZgq_FBigVnlhQPLQD4w2yjDn4zus3'
 
@@ -24,6 +63,9 @@ RICE_CLASSES = [
     'Weed_Broadleaf', 'Weed_Grass'
 ]
 
+# ==========================================
+# 3. HELPER FUNCTIONS
+# ==========================================
 @st.cache_resource
 def load_model(crop_type):
     if crop_type == 'Maize':
@@ -60,14 +102,16 @@ def get_weather(location):
     if not location:
         return None
     try:
-        url = f"https://wttr.in/{location}?format=%t|%h|%p"
+        # Requesting data from wttr.in
+        url = f"https://wttr.in/{location}?format=%t|%h|%p|%C"
         response = requests.get(url)
         if response.status_code == 200:
             data = response.text.split("|")
             return {
                 "temp": data[0].strip(),
                 "humidity": data[1].strip(),
-                "precip": data[2].strip()
+                "precip": data[2].strip(),
+                "condition": data[3].strip()
             }
     except:
         return None
@@ -85,7 +129,6 @@ def analyze_quadrants(image, interpreter, classes):
     }
     
     results = {}
-    
     for name, img_crop in quadrants.items():
         preds = predict_image(img_crop, interpreter)
         idx = np.argmax(preds)
@@ -99,15 +142,15 @@ def get_smart_advice(diseases, weather, location):
     try:
         api_key = st.secrets["openai_key"]
     except:
-        return "OpenAI API Key missing in Secrets."
+        return "⚠️ OpenAI API Key missing in Secrets."
 
     client = openai.OpenAI(api_key=api_key)
     
     disease_str = ", ".join(diseases)
     
-    weather_context = ""
+    weather_context = "Unknown weather"
     if weather:
-        weather_context = f"Current weather in {location}: Temperature {weather['temp']}, Humidity {weather['humidity']}, Precipitation {weather['precip']}."
+        weather_context = f"Current weather in {location}: {weather['temp']}, Humidity {weather['humidity']}, Rain {weather['precip']}."
     
     prompt = f"""
     You are an expert Agronomist. 
@@ -132,111 +175,156 @@ def get_smart_advice(diseases, weather, location):
     except Exception as e:
         return f"Error connecting to AI Doctor: {e}"
 
-st.set_page_config(page_title="Agri-Doctor Pro", layout="wide")
-
-st.sidebar.title("Agri-Doctor")
-st.sidebar.subheader("Settings")
+# ==========================================
+# 4. SIDEBAR UI
+# ==========================================
+st.sidebar.title("Agri-Doctor 👨‍⚕️")
+st.sidebar.markdown("---")
 crop_choice = st.sidebar.radio("Select Crop", ["Maize (Corn)", "Rice (Paddy)"])
-user_location = st.sidebar.text_input("Enter Your Location", placeholder="e.g., Hyderabad")
+user_location = st.sidebar.text_input("Enter Your Location", placeholder="e.g. Hyderabad")
 enable_ai = st.sidebar.checkbox("Enable AI Advice", value=True)
+st.sidebar.markdown("---")
+st.sidebar.info("v2.0 | Integrated Weather & Quadrant Analysis")
 
 if crop_choice == "Maize (Corn)":
-    st.title("Maize Disease Detection")
+    st.header("🌽 Maize Disease Detection")
     current_classes = CORN_CLASSES
     model_key = 'Maize'
 else:
-    st.title("Rice Disease Detection")
+    st.header("🌾 Rice Disease Detection")
     current_classes = RICE_CLASSES
     model_key = 'Rice'
 
+# ==========================================
+# 5. WEATHER DASHBOARD
+# ==========================================
+weather_data = None
+if user_location:
+    weather_data = get_weather(user_location)
+    if weather_data:
+        st.markdown(f"""
+        <div class="weather-card">
+            <h3>📍 Weather Report: {user_location}</h3>
+            <div class="metric-container">
+                <div>
+                    <span style="font-size: 24px;">🌡️</span><br>
+                    <b>{weather_data['temp']}</b><br>Temp
+                </div>
+                <div>
+                    <span style="font-size: 24px;">💧</span><br>
+                    <b>{weather_data['humidity']}</b><br>Humidity
+                </div>
+                <div>
+                    <span style="font-size: 24px;">🌧️</span><br>
+                    <b>{weather_data['precip']}</b><br>Precip
+                </div>
+                <div>
+                    <span style="font-size: 24px;">🌤️</span><br>
+                    <b>{weather_data['condition']}</b><br>Condition
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.warning("⚠️ Could not fetch weather. Check city name.")
+
+# ==========================================
+# 6. MAIN ANALYSIS UI
+# ==========================================
 uploaded_file = st.file_uploader("Upload Leaf Image", type=["jpg", "png", "jpeg"])
 
 if uploaded_file is not None:
-    col1, col2 = st.columns([1, 1])
+    # Create layout columns
+    col1, col2 = st.columns([1, 1.5])
     
     with col1:
         image = Image.open(uploaded_file)
-        st.image(image, caption='Original Image', use_column_width=True)
+        st.image(image, caption='Uploaded Leaf', use_column_width=True)
     
     with col2:
-        if st.button('Run Diagnosis'):
-            with st.spinner('Analyzing crop health...'):
+        st.subheader("Diagnosis Console")
+        if st.button('🚀 Run Smart Analysis'):
+            with st.spinner('Scanning leaf quadrants...'):
                 try:
+                    # Load Model
                     interpreter = load_model(model_key)
                     
-                    weather = None
-                    if user_location:
-                        weather = get_weather(user_location)
-                    
-                    if weather:
-                        st.info(f"📍 Weather in {user_location}: {weather['temp']} | 💧 Humidity: {weather['humidity']} | 🌧️ Precip: {weather['precip']}")
-                    
+                    # Run Analysis
                     quad_results = analyze_quadrants(image, interpreter, current_classes)
                     
-                    st.write("### Quadrant Analysis")
-                    row1 = st.columns(2)
-                    row2 = st.columns(2)
+                    # --- DISPLAY QUADRANTS GRID ---
+                    st.write("### 🔍 Quadrant Analysis")
+                    q_col1, q_col2 = st.columns(2)
                     
-                    # Store all detections to filter later
+                    # List to track unique detections for AI
                     all_detections = []
                     
-                    def display_quad(col, title, data):
-                        with col:
-                            st.image(data["img"], use_column_width=True)
-                            lbl = data["label"]
-                            conf = data["conf"]
-                            
-                            color = "gray"
-                            if conf > 50:
-                                if "Healthy" in lbl:
-                                    color = "green"
-                                elif "Weed" in lbl:
-                                    color = "orange"
-                                    all_detections.append((lbl, conf, "Weed"))
-                                else:
-                                    color = "red"
-                                    all_detections.append((lbl, conf, "Disease"))
+                    def process_and_display(column, title, data):
+                        lbl = data["label"]
+                        conf = data["conf"]
+                        
+                        # Color Coding Logic
+                        color_hex = "#777" # Grey default
+                        status = "Uncertain"
+                        
+                        if conf > 50:
+                            if "Healthy" in lbl:
+                                color_hex = "#28a745" # Green
+                                status = "Healthy"
+                            elif "Weed" in lbl:
+                                color_hex = "#fd7e14" # Orange
+                                status = "Weed"
+                                all_detections.append((lbl, conf, "Weed"))
                             else:
-                                lbl = "Uncertain"
-                            
-                            st.markdown(f"**{title}**: :{color}[{lbl} ({conf:.1f}%)]")
+                                color_hex = "#dc3545" # Red
+                                status = "Disease"
+                                all_detections.append((lbl, conf, "Disease"))
+                        
+                        with column:
+                            st.image(data["img"], use_column_width=True)
+                            st.markdown(f"""
+                                <div style="text-align: center; font-size: 14px; margin-bottom: 10px;">
+                                    <b>{title}</b><br>
+                                    <span style="color: {color_hex}; font-weight: bold;">
+                                        {lbl} ({conf:.1f}%)
+                                    </span>
+                                </div>
+                            """, unsafe_allow_html=True)
 
-                    display_quad(row1[0], "Top-Left", quad_results["Top-Left"])
-                    display_quad(row1[1], "Top-Right", quad_results["Top-Right"])
-                    display_quad(row2[0], "Bottom-Left", quad_results["Bottom-Left"])
-                    display_quad(row2[1], "Bottom-Right", quad_results["Bottom-Right"])
-                    
+                    process_and_display(q_col1, "Top-Left", quad_results["Top-Left"])
+                    process_and_display(q_col2, "Top-Right", quad_results["Top-Right"])
+                    process_and_display(q_col1, "Bottom-Left", quad_results["Bottom-Left"])
+                    process_and_display(q_col2, "Bottom-Right", quad_results["Bottom-Right"])
+
+                    # --- AI DOCTOR SECTION ---
                     if enable_ai:
-                        st.write("### AI Doctor Prescription")
-                        with st.spinner("Generating targeted recommendation..."):
-                            
-                            # LOGIC: Filter Top Disease + Top Weed
+                        st.markdown("---")
+                        st.subheader("🤖 AI Doctor Prescription")
+                        
+                        with st.spinner("Synthesizing treatment plan..."):
+                            # Filter logic: Get Top 1 Disease & Top 1 Weed
                             final_diagnosis = []
                             
-                            # Separate into categories
                             diseases = [d for d in all_detections if d[2] == "Disease"]
                             weeds = [d for d in all_detections if d[2] == "Weed"]
                             
-                            # Pick Top 1 Disease (Highest Confidence)
                             if diseases:
-                                top_disease = max(diseases, key=lambda x: x[1])
-                                final_diagnosis.append(top_disease[0])
-                                
-                            # Pick Top 1 Weed (Highest Confidence)
+                                top_disease = max(diseases, key=lambda x: x[1])[0]
+                                final_diagnosis.append(top_disease)
+                            
                             if weeds:
-                                top_weed = max(weeds, key=lambda x: x[1])
-                                final_diagnosis.append(top_weed[0])
-                            
+                                top_weed = max(weeds, key=lambda x: x[1])[0]
+                                final_diagnosis.append(top_weed)
+                                
                             if not final_diagnosis:
-                                if not all_detections:
-                                    final_diagnosis = ["Healthy Crop"]
-                                else:
-                                    final_diagnosis = ["Uncertain Issue"]
+                                final_diagnosis = ["Healthy Crop" if not all_detections else "Uncertain Issue"]
                             
-                            advice = get_smart_advice(final_diagnosis, weather, user_location)
+                            # Get Advice
+                            advice = get_smart_advice(final_diagnosis, weather_data, user_location)
                             
+                            # Display Result
                             st.success(f"**Targeting:** {', '.join(final_diagnosis)}")
                             st.info(advice)
-                            
+
                 except Exception as e:
-                    st.error(f"Error: {str(e)}")
+                    st.error(f"Error during analysis: {str(e)}")
