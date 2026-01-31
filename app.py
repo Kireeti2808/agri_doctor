@@ -54,14 +54,19 @@ def predict_image(image, interpreter):
     output_data = interpreter.get_tensor(output_details[0]['index'])
     return output_data[0]
 
-def generate_heatmap(image, interpreter, predicted_index):
+def quadrant_analysis(image, interpreter, predicted_index):
     img = image.resize((224, 224))
     img_array = np.array(img, dtype=np.float32)
     
-    step = 28
-    box = 40
-    width, height = 224, 224
-    heatmap = np.zeros((width, height))
+    height, width = 224, 224
+    mid_h, mid_w = height // 2, width // 2
+    
+    quadrants = {
+        "Top-Left": (0, 0, mid_h, mid_w),
+        "Top-Right": (0, mid_w, mid_h, width),
+        "Bottom-Left": (mid_h, 0, height, mid_w),
+        "Bottom-Right": (mid_h, mid_w, height, width)
+    }
     
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
@@ -71,39 +76,39 @@ def generate_heatmap(image, interpreter, predicted_index):
     interpreter.invoke()
     orig_score = interpreter.get_tensor(output_details[0]['index'])[0][predicted_index]
     
-    for x in range(0, width, step):
-        for y in range(0, height, step):
-            masked_img = img_array.copy()
-            masked_img[y:y+box, x:x+box, :] = 0
-            
-            inp = np.expand_dims(tf.keras.applications.efficientnet.preprocess_input(masked_img), axis=0)
-            interpreter.set_tensor(input_details[0]['index'], inp)
-            interpreter.invoke()
-            new_score = interpreter.get_tensor(output_details[0]['index'])[0][predicted_index]
-            
-            heatmap[y:y+box, x:x+box] = max(0, orig_score - new_score)
-            
-    if np.max(heatmap) > 0:
-        heatmap /= np.max(heatmap)
+    drops = {}
+    
+    for name, (y1, x1, y2, x2) in quadrants.items():
+        masked_img = img_array.copy()
+        masked_img[y1:y2, x1:x2, :] = 0 
         
-    return heatmap
+        inp = np.expand_dims(tf.keras.applications.efficientnet.preprocess_input(masked_img), axis=0)
+        interpreter.set_tensor(input_details[0]['index'], inp)
+        interpreter.invoke()
+        new_score = interpreter.get_tensor(output_details[0]['index'])[0][predicted_index]
+        
+        drops[name] = max(0, orig_score - new_score)
+        
+    return drops
 
-def get_gpt_advice(disease_name):
+def get_gpt_advice(disease_name, location):
     if "Healthy" in disease_name:
         return "The plant is healthy. Keep up the good work with regular watering and monitoring."
     
-    if "openai_key" in st.secrets:
+    try:
         api_key = st.secrets["openai_key"]
-    else:
+    except:
         return "OpenAI API Key missing in Secrets."
 
     client = openai.OpenAI(api_key=api_key)
     
+    loc_text = f"in {location}" if location else ""
+    
     prompt = f"""
-    You are an expert Agronomist. A farmer has detected '{disease_name}' in their crop.
-    Provide a concise response with:
+    You are an expert Agronomist. A farmer {loc_text} has detected '{disease_name}' in their crop.
+    Provide a concise response considering the location/climate if relevant:
     1. Cause (1 sentence)
-    2. Immediate Cure (Chemical or Organic)
+    2. Immediate Cure (Chemical or Organic suitable for this region)
     3. Prevention for next season.
     Keep it simple and actionable.
     """
@@ -122,6 +127,7 @@ st.set_page_config(page_title="Agri-Doctor Pro", layout="wide")
 st.sidebar.title("Agri-Doctor")
 st.sidebar.subheader("Settings")
 crop_choice = st.sidebar.radio("Select Crop", ["Maize (Corn)", "Rice (Paddy)"])
+user_location = st.sidebar.text_input("Enter Your Location", placeholder="e.g., Hyderabad, India")
 enable_ai = st.sidebar.checkbox("Enable AI Advice (OpenAI)", value=True)
 enable_xai = st.sidebar.checkbox("Enable Visual Analysis", value=False)
 
@@ -157,21 +163,18 @@ if uploaded_file is not None:
                     st.metric("Confidence", f"{confidence:.2f}%")
                     
                     if enable_xai:
-                        st.write("Visual Analysis")
-                        with st.spinner("Generating Heatmap..."):
-                            heatmap = generate_heatmap(image, interpreter, idx)
+                        st.write("Visual Quadrant Analysis")
+                        with st.spinner("Checking quadrants..."):
+                            drops = quadrant_analysis(image, interpreter, idx)
+                            important_quadrant = max(drops, key=drops.get)
                             
-                            fig, ax = plt.subplots()
-                            ax.imshow(image.resize((224, 224)))
-                            ax.imshow(heatmap, cmap='jet', alpha=0.5)
-                            ax.axis('off')
-                            st.pyplot(fig)
-                            st.caption("Red areas indicate high probability regions")
+                            st.bar_chart(drops)
+                            st.info(f"Most critical area: {important_quadrant}")
 
                     if enable_ai:
                         st.write("AI Doctor Prescription")
                         with st.spinner("Consulting GPT..."):
-                            advice = get_gpt_advice(result_class)
+                            advice = get_gpt_advice(result_class, user_location)
                             st.info(advice)
                             
                 except Exception as e:
