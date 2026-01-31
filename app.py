@@ -7,6 +7,8 @@ from PIL import Image, ImageOps
 import gdown
 import os
 import openai
+import requests
+from collections import Counter
 
 CORN_MODEL_ID = '1_1PcQqUFFiK9tgpXwivM6J7OJShL18jk'
 RICE_MODEL_ID = '1p2vZgq_FBigVnlhQPLQD4w2yjDn4zus3'
@@ -54,11 +56,28 @@ def predict_image(image, interpreter):
     output_data = interpreter.get_tensor(output_details[0]['index'])
     return output_data[0]
 
-def analyze_quadrants(image, interpreter, class_names):
+def get_weather(location):
+    if not location:
+        return None
+    try:
+        url = f"https://wttr.in/{location}?format=%t|%h|%p"
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.text.split("|")
+            return {
+                "temp": data[0].strip(),
+                "humidity": data[1].strip(),
+                "precip": data[2].strip()
+            }
+    except:
+        return None
+    return None
+
+def analyze_quadrants(image, interpreter, classes):
     w, h = image.size
     mid_w, mid_h = w // 2, h // 2
     
-    crops = {
+    quadrants = {
         "Top-Left": image.crop((0, 0, mid_w, mid_h)),
         "Top-Right": image.crop((mid_w, 0, w, mid_h)),
         "Bottom-Left": image.crop((0, mid_h, mid_w, h)),
@@ -67,25 +86,16 @@ def analyze_quadrants(image, interpreter, class_names):
     
     results = {}
     
-    for name, crop_img in crops.items():
-        preds = predict_image(crop_img, interpreter)
+    for name, img_crop in quadrants.items():
+        preds = predict_image(img_crop, interpreter)
         idx = np.argmax(preds)
         conf = np.max(preds) * 100
-        pred_class = class_names[idx]
-        
-        results[name] = {
-            "image": crop_img,
-            "class": pred_class,
-            "confidence": conf
-        }
+        label = classes[idx]
+        results[name] = {"label": label, "conf": conf, "img": img_crop}
         
     return results
 
-def get_gpt_advice(detected_issues, location):
-    issues_str = ", ".join(detected_issues)
-    if "Healthy" in issues_str and len(detected_issues) == 1:
-        return "The plant looks healthy in all examined areas. Maintain regular care."
-    
+def get_smart_advice(diseases, weather, location):
     try:
         api_key = st.secrets["openai_key"]
     except:
@@ -93,15 +103,24 @@ def get_gpt_advice(detected_issues, location):
 
     client = openai.OpenAI(api_key=api_key)
     
-    loc_text = f"in {location}" if location else ""
+    disease_str = ", ".join(diseases)
+    
+    weather_context = ""
+    if weather:
+        weather_context = f"Current weather in {location}: Temperature {weather['temp']}, Humidity {weather['humidity']}, Precipitation {weather['precip']}."
     
     prompt = f"""
-    You are an expert Agronomist. A farmer {loc_text} scanned a crop and found the following issues in different parts of the plant: {issues_str}.
-    Provide a combined recommendation:
-    1. Analysis of the mix (e.g., if both weeds and disease are present).
-    2. Immediate Cure (Chemical or Organic) for each distinct issue.
-    3. Prevention for next season.
-    Keep it concise and actionable.
+    You are an expert Agronomist. 
+    Analysis Report:
+    - Primary Issues Detected: {disease_str}
+    - {weather_context}
+
+    Task:
+    1. Analyze how the current weather might affect these specific issues.
+    2. Provide a treatment plan. If a weed and a disease are both present, suggest a compatible approach.
+    3. Give immediate actionable advice for the farmer.
+    
+    Keep response concise and structured.
     """
     
     try:
@@ -118,9 +137,8 @@ st.set_page_config(page_title="Agri-Doctor Pro", layout="wide")
 st.sidebar.title("Agri-Doctor")
 st.sidebar.subheader("Settings")
 crop_choice = st.sidebar.radio("Select Crop", ["Maize (Corn)", "Rice (Paddy)"])
-user_location = st.sidebar.text_input("Enter Your Location", placeholder="e.g., Hyderabad, India")
-enable_ai = st.sidebar.checkbox("Enable AI Advice (OpenAI)", value=True)
-enable_xai = st.sidebar.checkbox("Enable Visual Analysis", value=False)
+user_location = st.sidebar.text_input("Enter Your Location", placeholder="e.g., Hyderabad")
+enable_ai = st.sidebar.checkbox("Enable AI Advice", value=True)
 
 if crop_choice == "Maize (Corn)":
     st.title("Maize Disease Detection")
@@ -142,54 +160,82 @@ if uploaded_file is not None:
     
     with col2:
         if st.button('Run Diagnosis'):
-            with st.spinner('Analyzing patterns...'):
+            with st.spinner('Analyzing crop health...'):
                 try:
                     interpreter = load_model(model_key)
                     
-                    main_preds = predict_image(image, interpreter)
-                    main_idx = np.argmax(main_preds)
-                    main_conf = np.max(main_preds) * 100
-                    main_result = current_classes[main_idx]
+                    weather = None
+                    if user_location:
+                        weather = get_weather(user_location)
                     
-                    st.success(f"Overall Diagnosis: {main_result}")
-                    st.metric("Overall Confidence", f"{main_conf:.2f}%")
+                    if weather:
+                        st.info(f"📍 Weather in {user_location}: {weather['temp']} | 💧 Humidity: {weather['humidity']} | 🌧️ Precip: {weather['precip']}")
                     
-                    unique_detected_issues = {main_result}
-
-                    if enable_xai:
-                        st.write("### Multi-Zone Analysis")
-                        st.caption("Independent analysis of each image quadrant:")
-                        
-                        with st.spinner("Analyzing quadrants..."):
-                            quad_results = analyze_quadrants(image, interpreter, current_classes)
+                    quad_results = analyze_quadrants(image, interpreter, current_classes)
+                    
+                    st.write("### Quadrant Analysis")
+                    row1 = st.columns(2)
+                    row2 = st.columns(2)
+                    
+                    # Store all detections to filter later
+                    all_detections = []
+                    
+                    def display_quad(col, title, data):
+                        with col:
+                            st.image(data["img"], use_column_width=True)
+                            lbl = data["label"]
+                            conf = data["conf"]
                             
-                            row1 = st.columns(2)
-                            row2 = st.columns(2)
+                            color = "gray"
+                            if conf > 50:
+                                if "Healthy" in lbl:
+                                    color = "green"
+                                elif "Weed" in lbl:
+                                    color = "orange"
+                                    all_detections.append((lbl, conf, "Weed"))
+                                else:
+                                    color = "red"
+                                    all_detections.append((lbl, conf, "Disease"))
+                            else:
+                                lbl = "Uncertain"
                             
-                            def display_quad(col, title, data):
-                                with col:
-                                    st.image(data["image"], use_column_width=True)
-                                    color = ":red" if "Healthy" not in data["class"] else ":green"
-                                    st.markdown(f"**{title}**")
-                                    st.markdown(f"{color}[{data['class']}] ({data['confidence']:.1f}%)")
-                                    return data["class"]
+                            st.markdown(f"**{title}**: :{color}[{lbl} ({conf:.1f}%)]")
 
-                            c1 = display_quad(row1[0], "Top-Left", quad_results["Top-Left"])
-                            c2 = display_quad(row1[1], "Top-Right", quad_results["Top-Right"])
-                            c3 = display_quad(row2[0], "Bottom-Left", quad_results["Bottom-Left"])
-                            c4 = display_quad(row2[1], "Bottom-Right", quad_results["Bottom-Right"])
-                            
-                            unique_detected_issues.update([c1, c2, c3, c4])
-
+                    display_quad(row1[0], "Top-Left", quad_results["Top-Left"])
+                    display_quad(row1[1], "Top-Right", quad_results["Top-Right"])
+                    display_quad(row2[0], "Bottom-Left", quad_results["Bottom-Left"])
+                    display_quad(row2[1], "Bottom-Right", quad_results["Bottom-Right"])
+                    
                     if enable_ai:
                         st.write("### AI Doctor Prescription")
-                        
-                        final_issue_list = list(unique_detected_issues)
-                        if "Healthy" in final_issue_list and len(final_issue_list) > 1:
-                            final_issue_list = [i for i in final_issue_list if "Healthy" not in i]
+                        with st.spinner("Generating targeted recommendation..."):
                             
-                        with st.spinner("Consulting GPT..."):
-                            advice = get_gpt_advice(final_issue_list, user_location)
+                            # LOGIC: Filter Top Disease + Top Weed
+                            final_diagnosis = []
+                            
+                            # Separate into categories
+                            diseases = [d for d in all_detections if d[2] == "Disease"]
+                            weeds = [d for d in all_detections if d[2] == "Weed"]
+                            
+                            # Pick Top 1 Disease (Highest Confidence)
+                            if diseases:
+                                top_disease = max(diseases, key=lambda x: x[1])
+                                final_diagnosis.append(top_disease[0])
+                                
+                            # Pick Top 1 Weed (Highest Confidence)
+                            if weeds:
+                                top_weed = max(weeds, key=lambda x: x[1])
+                                final_diagnosis.append(top_weed[0])
+                            
+                            if not final_diagnosis:
+                                if not all_detections:
+                                    final_diagnosis = ["Healthy Crop"]
+                                else:
+                                    final_diagnosis = ["Uncertain Issue"]
+                            
+                            advice = get_smart_advice(final_diagnosis, weather, user_location)
+                            
+                            st.success(f"**Targeting:** {', '.join(final_diagnosis)}")
                             st.info(advice)
                             
                 except Exception as e:
