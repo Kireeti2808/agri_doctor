@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from PIL import Image
+from PIL import Image, ImageOps
 import gdown
 import os
 import openai
@@ -163,16 +163,52 @@ if uploaded_file is not None:
                     st.metric("Confidence", f"{confidence:.2f}%")
                     
                     if enable_xai:
-                        st.write("Visual Quadrant Analysis")
-                        with st.spinner("Checking quadrants..."):
+                        st.write("### Visual Quadrant Analysis")
+                        st.caption("Which part of the leaf led to this decision?")
+                        
+                        with st.spinner("Segmenting image..."):
                             drops = quadrant_analysis(image, interpreter, idx)
-                            important_quadrant = max(drops, key=drops.get)
+                            total_drop = sum(drops.values()) if sum(drops.values()) > 0 else 1
                             
-                            st.bar_chart(drops)
-                            st.info(f"Most critical area: {important_quadrant}")
+                            w, h = image.size
+                            mid_w, mid_h = w // 2, h // 2
+                            
+                            img_tl = image.crop((0, 0, mid_w, mid_h))
+                            img_tr = image.crop((mid_w, 0, w, mid_h))
+                            img_bl = image.crop((0, mid_h, mid_w, h))
+                            img_br = image.crop((mid_w, mid_h, w, h))
+                            
+                            row1 = st.columns(2)
+                            row2 = st.columns(2)
+                            
+                            def get_color(score):
+                                if score > 0.4: return ":red"
+                                if score > 0.2: return ":orange"
+                                return ":green"
+
+                            tl_score = (drops["Top-Left"] / total_drop) * 100
+                            tr_score = (drops["Top-Right"] / total_drop) * 100
+                            bl_score = (drops["Bottom-Left"] / total_drop) * 100
+                            br_score = (drops["Bottom-Right"] / total_drop) * 100
+
+                            with row1[0]:
+                                st.image(img_tl, use_column_width=True)
+                                st.markdown(f"**Top-Left**: [{get_color(drops['Top-Left'])}[{tl_score:.1f}% Importance]]")
+                            
+                            with row1[1]:
+                                st.image(img_tr, use_column_width=True)
+                                st.markdown(f"**Top-Right**: [{get_color(drops['Top-Right'])}[{tr_score:.1f}% Importance]]")
+                                
+                            with row2[0]:
+                                st.image(img_bl, use_column_width=True)
+                                st.markdown(f"**Bottom-Left**: [{get_color(drops['Bottom-Left'])}[{bl_score:.1f}% Importance]]")
+                            
+                            with row2[1]:
+                                st.image(img_br, use_column_width=True)
+                                st.markdown(f"**Bottom-Right**: [{get_color(drops['Bottom-Right'])}[{br_score:.1f}% Importance]]")
 
                     if enable_ai:
-                        st.write("AI Doctor Prescription")
+                        st.write("### AI Doctor Prescription")
                         with st.spinner("Consulting GPT..."):
                             advice = get_gpt_advice(result_class, user_location)
                             st.info(advice)
