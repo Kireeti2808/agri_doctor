@@ -1,7 +1,5 @@
 streamlit
-tensorflow
+tensorflow-cpu
 numpy
-requests
 Pillow
 gdown
-openai
