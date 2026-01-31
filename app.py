@@ -54,46 +54,37 @@ def predict_image(image, interpreter):
     output_data = interpreter.get_tensor(output_details[0]['index'])
     return output_data[0]
 
-def quadrant_analysis(image, interpreter, predicted_index):
-    img = image.resize((224, 224))
-    img_array = np.array(img, dtype=np.float32)
+def analyze_quadrants(image, interpreter, class_names):
+    w, h = image.size
+    mid_w, mid_h = w // 2, h // 2
     
-    height, width = 224, 224
-    mid_h, mid_w = height // 2, width // 2
-    
-    quadrants = {
-        "Top-Left": (0, 0, mid_h, mid_w),
-        "Top-Right": (0, mid_w, mid_h, width),
-        "Bottom-Left": (mid_h, 0, height, mid_w),
-        "Bottom-Right": (mid_h, mid_w, height, width)
+    crops = {
+        "Top-Left": image.crop((0, 0, mid_w, mid_h)),
+        "Top-Right": image.crop((mid_w, 0, w, mid_h)),
+        "Bottom-Left": image.crop((0, mid_h, mid_w, h)),
+        "Bottom-Right": image.crop((mid_w, mid_h, w, h))
     }
     
-    input_details = interpreter.get_input_details()
-    output_details = interpreter.get_output_details()
+    results = {}
     
-    orig_input = np.expand_dims(tf.keras.applications.efficientnet.preprocess_input(img_array.copy()), axis=0)
-    interpreter.set_tensor(input_details[0]['index'], orig_input)
-    interpreter.invoke()
-    orig_score = interpreter.get_tensor(output_details[0]['index'])[0][predicted_index]
-    
-    drops = {}
-    
-    for name, (y1, x1, y2, x2) in quadrants.items():
-        masked_img = img_array.copy()
-        masked_img[y1:y2, x1:x2, :] = 0 
+    for name, crop_img in crops.items():
+        preds = predict_image(crop_img, interpreter)
+        idx = np.argmax(preds)
+        conf = np.max(preds) * 100
+        pred_class = class_names[idx]
         
-        inp = np.expand_dims(tf.keras.applications.efficientnet.preprocess_input(masked_img), axis=0)
-        interpreter.set_tensor(input_details[0]['index'], inp)
-        interpreter.invoke()
-        new_score = interpreter.get_tensor(output_details[0]['index'])[0][predicted_index]
+        results[name] = {
+            "image": crop_img,
+            "class": pred_class,
+            "confidence": conf
+        }
         
-        drops[name] = max(0, orig_score - new_score)
-        
-    return drops
+    return results
 
-def get_gpt_advice(disease_name, location):
-    if "Healthy" in disease_name:
-        return "The plant is healthy. Keep up the good work with regular watering and monitoring."
+def get_gpt_advice(detected_issues, location):
+    issues_str = ", ".join(detected_issues)
+    if "Healthy" in issues_str and len(detected_issues) == 1:
+        return "The plant looks healthy in all examined areas. Maintain regular care."
     
     try:
         api_key = st.secrets["openai_key"]
@@ -105,12 +96,12 @@ def get_gpt_advice(disease_name, location):
     loc_text = f"in {location}" if location else ""
     
     prompt = f"""
-    You are an expert Agronomist. A farmer {loc_text} has detected '{disease_name}' in their crop.
-    Provide a concise response considering the location/climate if relevant:
-    1. Cause (1 sentence)
-    2. Immediate Cure (Chemical or Organic suitable for this region)
+    You are an expert Agronomist. A farmer {loc_text} scanned a crop and found the following issues in different parts of the plant: {issues_str}.
+    Provide a combined recommendation:
+    1. Analysis of the mix (e.g., if both weeds and disease are present).
+    2. Immediate Cure (Chemical or Organic) for each distinct issue.
     3. Prevention for next season.
-    Keep it simple and actionable.
+    Keep it concise and actionable.
     """
     
     try:
@@ -154,63 +145,51 @@ if uploaded_file is not None:
             with st.spinner('Analyzing patterns...'):
                 try:
                     interpreter = load_model(model_key)
-                    predictions = predict_image(image, interpreter)
-                    idx = np.argmax(predictions)
-                    confidence = np.max(predictions) * 100
-                    result_class = current_classes[idx]
                     
-                    st.success(f"Diagnosis: {result_class}")
-                    st.metric("Confidence", f"{confidence:.2f}%")
+                    main_preds = predict_image(image, interpreter)
+                    main_idx = np.argmax(main_preds)
+                    main_conf = np.max(main_preds) * 100
+                    main_result = current_classes[main_idx]
                     
+                    st.success(f"Overall Diagnosis: {main_result}")
+                    st.metric("Overall Confidence", f"{main_conf:.2f}%")
+                    
+                    unique_detected_issues = {main_result}
+
                     if enable_xai:
-                        st.write("### Visual Quadrant Analysis")
-                        st.caption("Which part of the leaf led to this decision?")
+                        st.write("### Multi-Zone Analysis")
+                        st.caption("Independent analysis of each image quadrant:")
                         
-                        with st.spinner("Segmenting image..."):
-                            drops = quadrant_analysis(image, interpreter, idx)
-                            total_drop = sum(drops.values()) if sum(drops.values()) > 0 else 1
-                            
-                            w, h = image.size
-                            mid_w, mid_h = w // 2, h // 2
-                            
-                            img_tl = image.crop((0, 0, mid_w, mid_h))
-                            img_tr = image.crop((mid_w, 0, w, mid_h))
-                            img_bl = image.crop((0, mid_h, mid_w, h))
-                            img_br = image.crop((mid_w, mid_h, w, h))
+                        with st.spinner("Analyzing quadrants..."):
+                            quad_results = analyze_quadrants(image, interpreter, current_classes)
                             
                             row1 = st.columns(2)
                             row2 = st.columns(2)
                             
-                            def get_color(score):
-                                if score > 0.4: return ":red"
-                                if score > 0.2: return ":orange"
-                                return ":green"
+                            def display_quad(col, title, data):
+                                with col:
+                                    st.image(data["image"], use_column_width=True)
+                                    color = ":red" if "Healthy" not in data["class"] else ":green"
+                                    st.markdown(f"**{title}**")
+                                    st.markdown(f"{color}[{data['class']}] ({data['confidence']:.1f}%)")
+                                    return data["class"]
 
-                            tl_score = (drops["Top-Left"] / total_drop) * 100
-                            tr_score = (drops["Top-Right"] / total_drop) * 100
-                            bl_score = (drops["Bottom-Left"] / total_drop) * 100
-                            br_score = (drops["Bottom-Right"] / total_drop) * 100
-
-                            with row1[0]:
-                                st.image(img_tl, use_column_width=True)
-                                st.markdown(f"**Top-Left**: [{get_color(drops['Top-Left'])}[{tl_score:.1f}% Importance]]")
+                            c1 = display_quad(row1[0], "Top-Left", quad_results["Top-Left"])
+                            c2 = display_quad(row1[1], "Top-Right", quad_results["Top-Right"])
+                            c3 = display_quad(row2[0], "Bottom-Left", quad_results["Bottom-Left"])
+                            c4 = display_quad(row2[1], "Bottom-Right", quad_results["Bottom-Right"])
                             
-                            with row1[1]:
-                                st.image(img_tr, use_column_width=True)
-                                st.markdown(f"**Top-Right**: [{get_color(drops['Top-Right'])}[{tr_score:.1f}% Importance]]")
-                                
-                            with row2[0]:
-                                st.image(img_bl, use_column_width=True)
-                                st.markdown(f"**Bottom-Left**: [{get_color(drops['Bottom-Left'])}[{bl_score:.1f}% Importance]]")
-                            
-                            with row2[1]:
-                                st.image(img_br, use_column_width=True)
-                                st.markdown(f"**Bottom-Right**: [{get_color(drops['Bottom-Right'])}[{br_score:.1f}% Importance]]")
+                            unique_detected_issues.update([c1, c2, c3, c4])
 
                     if enable_ai:
                         st.write("### AI Doctor Prescription")
+                        
+                        final_issue_list = list(unique_detected_issues)
+                        if "Healthy" in final_issue_list and len(final_issue_list) > 1:
+                            final_issue_list = [i for i in final_issue_list if "Healthy" not in i]
+                            
                         with st.spinner("Consulting GPT..."):
-                            advice = get_gpt_advice(result_class, user_location)
+                            advice = get_gpt_advice(final_issue_list, user_location)
                             st.info(advice)
                             
                 except Exception as e:
