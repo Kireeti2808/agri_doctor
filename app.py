@@ -1,250 +1,119 @@
 import streamlit as st
 import tensorflow as tf
 import numpy as np
-import requests
 from PIL import Image
-import os
 import gdown
-import openai
+import os
 
-MODEL_FILE_ID = '1_1PcQqUFFiK9tgpXwivM6J7OJShL18jk'
-MODEL_FILENAME = 'corn_model.tflite'
+CORN_MODEL_ID = '1_1PcQqUFFiK9tgpXwivM6J7OJShL18jk' 
+RICE_MODEL_ID = '1p2vZgq_FBigVnlhQPLQD4w2yjDn4zus3'
 
-CLASS_NAMES = {
-    0: 'Maize_Blight',
-    1: 'Maize_Common_Rust',
-    2: 'Maize_Gray_Leaf_Spot',
-    3: 'Maize_Healthy',
-    4: 'Weed_Broadleaf',
-    5: 'Weed_Grass'
-}
+CORN_CLASSES = [
+    'Maize_Blight', 'Maize_Common_Rust', 'Maize_Gray_Leaf_Spot', 
+    'Maize_Healthy', 'Weed_Broadleaf', 'Weed_Grass'
+]
 
-st.set_page_config(page_title="Agri-Smart Advisor", layout="wide")
-
-st.markdown("""
-<style>
-    .reportview-container {
-        background: #f0f2f6;
-    }
-    .result-circle {
-        width: 220px;
-        height: 220px;
-        border-radius: 50%;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        text-align: center;
-        color: white;
-        margin: 20px auto;
-        padding: 15px;
-        box-shadow: 0 6px 10px rgba(0,0,0,0.2);
-        transition: transform 0.3s ease;
-    }
-    .result-circle:hover {
-        transform: scale(1.05);
-    }
-    .result-circle h4 {
-        margin: 0;
-        font-size: 18px;
-        font-weight: bold;
-        color: white;
-    }
-    .result-circle p {
-        margin: 5px 0 0 0;
-        font-size: 14px;
-    }
-    .disease-gradient {
-        background: radial-gradient(circle at 30% 30%, #ff512f, #dd2476);
-    }
-    .weed-gradient {
-        background: radial-gradient(circle at 30% 30%, #f09819, #edde5d);
-        color: #333 !important;
-    }
-    .weed-gradient h4 {
-        color: #333 !important;
-    }
-    .healthy-gradient {
-        background: radial-gradient(circle at 30% 30%, #1D976C, #93F9B9);
-    }
-    .section-title {
-        font-size: 24px;
-        font-weight: bold;
-        margin-top: 30px;
-        margin-bottom: 20px;
-        border-bottom: 2px solid #ddd;
-        padding-bottom: 5px;
-    }
-</style>
-""", unsafe_allow_html=True)
+RICE_CLASSES = [
+    'Rice_Bacterial_Leaf_Blight',
+    'Rice_Brown_Spot',
+    'Rice_Healthy_Rice_Leaf',
+    'Rice_Leaf_Blast',
+    'Rice_Leaf_scald',
+    'Rice_Sheath_Blight',
+    'Weed_Broadleaf',
+    'Weed_Grass'
+]
 
 @st.cache_resource
-def load_model_from_drive():
-    if not os.path.exists(MODEL_FILENAME):
-        url = f'https://drive.google.com/uc?id={MODEL_FILE_ID}'
-        gdown.download(url, MODEL_FILENAME, quiet=False, fuzzy=True)
-
-    interpreter = tf.lite.Interpreter(model_path=MODEL_FILENAME)
+def load_model(crop_type):
+    if crop_type == 'Maize':
+        file_id = CORN_MODEL_ID
+        filename = 'corn_model.tflite'
+    else:
+        file_id = RICE_MODEL_ID
+        filename = 'rice_model.tflite'
+    
+    if not os.path.exists(filename):
+        with st.spinner(f"Downloading {crop_type} Model..."):
+            url = f'https://drive.google.com/uc?id={file_id}'
+            gdown.download(url, filename, quiet=False)
+    
+    interpreter = tf.lite.Interpreter(model_path=filename)
     interpreter.allocate_tensors()
     return interpreter
 
-def tflite_predict(interpreter, image):
+def predict_image(image, interpreter):
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
-
+    
     img = image.resize((224, 224))
     img_array = np.array(img, dtype=np.float32)
     img_array = np.expand_dims(img_array, axis=0)
-    img_array = tf.keras.applications.efficientnet_v2.preprocess_input(img_array)
+    
+    img_array = tf.keras.applications.efficientnet.preprocess_input(img_array)
 
     interpreter.set_tensor(input_details[0]['index'], img_array)
     interpreter.invoke()
-
     output_data = interpreter.get_tensor(output_details[0]['index'])
-    return output_data
-
-def get_real_weather(city_name):
-    try:
-        url = f"https://wttr.in/{city_name}?format=j1"
-        response = requests.get(url)
-        data = response.json()
-        current = data['current_condition'][0]
-        return {
-            "temperature": current['temp_C'],
-            "humidity": current['humidity'],
-            "condition": current['weatherDesc'][0]['value'],
-            "city": city_name
-        }
-    except:
-        return {"temperature": "30", "humidity": "45", "condition": "Sunny", "city": city_name}
-
-def get_openai_advice(vision_results, weather):
-    if "OPENAI_API_KEY" not in st.secrets:
-        return "OpenAI API Key missing. Please check your Secrets."
-
-    client = openai.OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-    problems = ", ".join(list(vision_results))
     
-    prompt = f"""
-    You are an expert agronomist.
-    Situation:
-    - Crops Issues: {problems}
-    - Weather: {weather['condition']}, {weather['temperature']}C
+    return output_data[0]
+
+st.set_page_config(page_title="Agri-Doctor", layout="wide")
+
+st.sidebar.title("Agri-Doctor")
+st.sidebar.subheader("Select Crop")
+crop_choice = st.sidebar.radio("", ["Maize (Corn)", "Rice (Paddy)"])
+
+if crop_choice == "Maize (Corn)":
+    st.title("Maize Disease Detection")
+    st.write("Upload a maize leaf to detect Blight, Rust, or Leaf Spot.")
+    current_classes = CORN_CLASSES
+    model_key = 'Maize'
+
+else:
+    st.title("Rice & Weed Doctor")
+    st.write("Upload a rice leaf to detect Diseases or Weeds.")
+    current_classes = RICE_CLASSES
+    model_key = 'Rice'
+
+uploaded_file = st.file_uploader("Choose a leaf image...", type=["jpg", "png", "jpeg"])
+
+if uploaded_file is not None:
+    col1, col2 = st.columns([1, 1])
     
-    Task:
-    Provide a formatted advice section:
-    1. **Immediate Action**: What to do right now.
-    2. **Chemical Solution**: Specific fungicide/herbicide names.
-    3. **Organic Solution**: Home-made or natural remedies.
-    Keep it concise.
-    """
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"OpenAI Error: {e}"
+    with col1:
+        image = Image.open(uploaded_file)
+        st.image(image, caption='Uploaded Leaf', use_column_width=True)
+    
+    with col2:
+        st.write("### Analysis Result")
+        if st.button('Analyze Plant'):
+            with st.spinner(f'Processing...'):
+                try:
+                    interpreter = load_model(model_key)
+                    
+                    predictions = predict_image(image, interpreter)
+                    
+                    idx = np.argmax(predictions)
+                    confidence = np.max(predictions) * 100
+                    result_class = current_classes[idx]
+                    
+                    if confidence > 50:
+                        st.success(f"Diagnosis: {result_class}")
+                        st.metric("Confidence Score", f"{confidence:.2f}%")
+                        
+                        if "Healthy" in result_class:
+                            st.write("Plant is healthy!")
+                        elif "Weed" in result_class:
+                            st.warning("Weed detected! Recommended: Remove manually or apply herbicide.")
+                        else:
+                            st.warning("Disease detected. Recommended: Isolate plant and check fungicide options.")
+                    else:
+                        st.error("Uncertain prediction. The leaf might be unclear or not belong to this crop.")
+                        
+                except Exception as e:
+                    st.error(f"Error: {str(e)}")
+                    st.write("Tip: Check if the Google Drive ID is valid and public.")
 
-st.title("Agri-Smart Advisor")
 
-st.sidebar.header("Settings")
-city = st.sidebar.text_input("Farm Location (City)", value="Vellore")
 
-try:
-    interpreter = load_model_from_drive()
-except Exception as e:
-    st.error(f"Error loading model: {e}")
-    st.stop()
-
-uploaded_file = st.file_uploader("Upload Crop Image", type=["jpg", "png", "jpeg"])
-
-if uploaded_file and city:
-    try:
-        original_img = Image.open(uploaded_file).convert("RGB")
-        
-        col1, col2 = st.columns([1, 1])
-        
-        with col1:
-            st.image(original_img, caption="Uploaded Field Image", use_column_width=True)
-            
-        with col2:
-            weather = get_real_weather(city)
-            st.subheader(f"Weather in {weather['city']}")
-            w_c1, w_c2 = st.columns(2)
-            w_c1.metric("Temperature", f"{weather['temperature']}C")
-            w_c2.metric("Humidity", f"{weather['humidity']}%")
-            st.info(f"Condition: {weather['condition']}")
-
-        st.divider()
-
-        with st.spinner("AI is scanning the crops..."):
-            width, height = original_img.size
-            crops = {
-                "Top-Left": original_img.crop((0, 0, width//2, height//2)),
-                "Top-Right": original_img.crop((width//2, 0, width, height//2)),
-                "Bottom-Left": original_img.crop((0, height//2, width//2, height)),
-                "Bottom-Right": original_img.crop((width//2, height//2, width, height))
-            }
-            
-            found_problems = set()
-            display_cards = []
-
-            for pos, crop_img in crops.items():
-                preds = tflite_predict(interpreter, crop_img)
-                pred_index = np.argmax(preds)
-                confidence = np.max(preds) * 100
-                label = CLASS_NAMES[pred_index]
-                
-                if confidence > 55:
-                    found_problems.add(label)
-                    display_cards.append({
-                        "pos": pos,
-                        "label": label,
-                        "conf": confidence
-                    })
-
-        st.markdown('<div class="section-title">1. Detection Results</div>', unsafe_allow_html=True)
-        
-        if not found_problems:
-             st.markdown(f"""
-                <div class="result-circle healthy-gradient">
-                    <h4>Healthy Crop</h4>
-                    <p>No issues detected</p>
-                </div>
-            """, unsafe_allow_html=True)
-        else:
-            cols = st.columns(len(display_cards)) if len(display_cards) <= 3 else st.columns(3)
-            
-            for i, card in enumerate(display_cards):
-                if "Healthy" in card['label']:
-                    css_class = "healthy-gradient"
-                elif "Weed" in card['label']:
-                    css_class = "weed-gradient"
-                else:
-                    css_class = "disease-gradient"
-
-                html_card = f"""
-                <div class="result-circle {css_class}">
-                    <h4>{card['label']}</h4>
-                    <p><b>Loc:</b> {card['pos']}</p>
-                    <p><b>Conf:</b> {card['conf']:.1f}%</p>
-                </div>
-                """
-                with cols[i % len(cols)]:
-                    st.markdown(html_card, unsafe_allow_html=True)
-                    st.image(crops[card['pos']], width=150)
-
-        if found_problems:
-            st.divider()
-            st.markdown('<div class="section-title">2. AI Treatment Plan</div>', unsafe_allow_html=True)
-            
-            with st.spinner("Consulting AI Agronomist for treatment..."):
-                advice = get_openai_advice(found_problems, weather)
-                st.markdown(advice)
-            
-            st.warning("Disclaimer: Always consult a local agricultural expert before applying chemicals.")
-
-    except Exception as e:
-        st.error(f"Analysis Error: {e}")
