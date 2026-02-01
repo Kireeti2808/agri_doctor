@@ -12,46 +12,57 @@ from tensorflow.keras.applications import efficientnet, mobilenet
 st.set_page_config(page_title="Agri-Doctor Pro", layout="wide", page_icon="🌿")
 
 # --- 2. CUSTOM CSS FOR STYLING ---
+# We use unsafe_allow_html=True to force Streamlit to apply this CSS
 st.markdown("""
     <style>
-    /* Global Rounding */
+    /* Global Rounding & Fonts */
     .stButton>button {
         border-radius: 20px;
         background-color: #4CAF50;
         color: white;
         font-weight: bold;
         border: none;
+        padding: 10px 20px;
     }
     .stTextInput>div>div>input {
         border-radius: 15px;
     }
-    .css-1r6slb0 { /* Container Padding */
-        border-radius: 15px;
-        padding: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
+    
     /* Weather Widget Styling */
     .weather-card {
         background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
         border-radius: 20px;
-        padding: 20px;
+        padding: 15px;
         text-align: center;
         box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         margin-bottom: 20px;
+        color: #333;
+        font-family: sans-serif;
+    }
+    .weather-main {
         display: flex;
-        justify-content: space-around;
+        justify-content: center;
         align-items: center;
+        gap: 20px;
     }
     .weather-temp {
-        font-size: 36px;
+        font-size: 32px;
         font-weight: 800;
-        color: #333;
         margin: 0;
     }
-    .weather-desc {
+    .weather-details {
+        text-align: left;
         font-size: 14px;
-        color: #555;
-        text-transform: capitalize;
+        line-height: 1.4;
+    }
+    
+    /* Result Cards */
+    .result-card {
+        background-color: #f8f9fa;
+        border-radius: 15px;
+        padding: 15px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
     </style>
 """, unsafe_allow_html=True)
@@ -73,31 +84,31 @@ def get_weather_visual(condition):
     
     # CSS Shapes for Weather Icons
     sun_html = """
-    <div style="width:60px; height:60px; background:#FFD700; border-radius:50%; box-shadow: 0 0 15px orange; margin:auto; animation: spin 10s linear infinite;"></div>
+    <div style="width:50px; height:50px; background:#FFD700; border-radius:50%; box-shadow: 0 0 15px orange; margin:auto; animation: spin 10s linear infinite;"></div>
     """
     
     cloud_html = """
-    <div style="width:70px; height:35px; background:#fff; border-radius:20px; margin:auto; position:relative; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>
+    <div style="width:60px; height:30px; background:#fff; border-radius:20px; margin:auto; position:relative; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>
     """
     
     rain_html = """
-    <div style="width:60px; height:30px; background:#778899; border-radius:20px; margin:auto;"></div>
+    <div style="width:50px; height:25px; background:#778899; border-radius:20px; margin:auto;"></div>
     <div style="display:flex; justify-content:center; gap:5px; margin-top:5px;">
-        <div style="width:4px; height:10px; background:#00BFFF; border-radius:2px;"></div>
-        <div style="width:4px; height:10px; background:#00BFFF; border-radius:2px;"></div>
-        <div style="width:4px; height:10px; background:#00BFFF; border-radius:2px;"></div>
+        <div style="width:3px; height:8px; background:#00BFFF; border-radius:2px;"></div>
+        <div style="width:3px; height:8px; background:#00BFFF; border-radius:2px;"></div>
+        <div style="width:3px; height:8px; background:#00BFFF; border-radius:2px;"></div>
     </div>
     """
     
     storm_html = """
-    <div style="width:60px; height:30px; background:#444; border-radius:20px; margin:auto;"></div>
-    <div style="text-align:center; color:#FFD700; font-size:20px; line-height:10px;">⚡</div>
+    <div style="width:50px; height:25px; background:#444; border-radius:20px; margin:auto;"></div>
+    <div style="text-align:center; color:#FFD700; font-size:18px; line-height:10px;">⚡</div>
     """
     
     if "sun" in condition or "clear" in condition: return sun_html
     elif "rain" in condition or "shower" in condition or "drizzle" in condition: return rain_html
     elif "storm" in condition or "thunder" in condition: return storm_html
-    else: return cloud_html # Default Cloudy
+    else: return cloud_html 
 
 # --- 5. FUNCTIONS ---
 @st.cache_resource
@@ -194,22 +205,26 @@ if uploaded_file:
     with col1:
         image = Image.open(uploaded_file)
         st.image(image, caption='Uploaded Image', use_column_width=True)
-        # Rounded Image CSS hack
+        # Force Rounded Images via CSS
         st.markdown('<style>img {border-radius: 15px;}</style>', unsafe_allow_html=True)
 
     with col2:
         weather_data = get_weather(user_location)
         if weather_data:
-            # --- WEATHER WIDGET (ROUNDED & STYLED) ---
+            # --- WEATHER WIDGET (FIXED RENDERING) ---
+            # IMPORTANT: unsafe_allow_html=True MUST BE PRESENT
             st.markdown(f"""
             <div class="weather-card">
-                <div>
-                    {weather_data['visual']}
+                <div class="weather-main">
+                    <div>{weather_data['visual']}</div>
+                    <div>
+                        <p class="weather-temp">{weather_data['temp']}</p>
+                    </div>
                 </div>
-                <div>
-                    <p class="weather-temp">{weather_data['temp']}</p>
-                    <p class="weather-desc">{weather_data['condition']}</p>
-                    <p style="font-size:12px; margin:0; color:#666;">Humidity: {weather_data['humidity']}</p>
+                <div class="weather-details">
+                    <b>{weather_data['condition']}</b><br>
+                    Humidity: {weather_data['humidity']}<br>
+                    Precip: {weather_data['precip']}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -234,14 +249,14 @@ if uploaded_file:
                             if "Healthy" in label: color = "#28a745" # Green
                             if "Weed" in label or label in COTTON_WEED_CLASSES: color = "#fd7e14" # Orange
                             
-                            # ROUNDED PROGRESS BAR
+                            # --- PROGRESS BAR (FIXED RENDERING) ---
                             st.markdown(f"""
-                                <div style="margin-bottom:15px; background:#f0f2f6; padding:10px; border-radius:12px;">
-                                    <div style="font-weight:bold; color:{color}; font-size:13px; margin-bottom:5px;">{label}</div>
+                                <div class="result-card">
+                                    <div style="font-weight:bold; color:{color}; font-size:14px; margin-bottom:5px;">{label}</div>
                                     <div style="width:100%; background:#e0e0e0; border-radius:10px; height:8px;">
                                         <div style="width:{conf}%; background:{color}; height:8px; border-radius:10px;"></div>
                                     </div>
-                                    <div style="text-align:right; font-size:10px; color:#666;">{conf:.0f}%</div>
+                                    <div style="text-align:right; font-size:11px; color:#666; margin-top:2px;">{conf:.0f}%</div>
                                 </div>
                             """, unsafe_allow_html=True)
                             
@@ -251,10 +266,10 @@ if uploaded_file:
                         st.markdown("---")
                         final_issue = max(set(detections), key=detections.count) if detections else "Healthy/Unknown"
                         
-                        # Custom Success Box
+                        # --- SUCCESS BOX (FIXED RENDERING) ---
                         st.markdown(f"""
                         <div style="background-color:#d4edda; color:#155724; padding:15px; border-radius:15px; border:1px solid #c3e6cb; margin-bottom:10px;">
-                            <strong>✅ Diagnosis Complete:</strong> {final_issue}
+                            <h4 style="margin:0;">✅ Diagnosis: {final_issue}</h4>
                         </div>
                         """, unsafe_allow_html=True)
                         
