@@ -10,9 +10,6 @@ from tensorflow.keras.applications import efficientnet, mobilenet
 
 st.set_page_config(page_title="Agri-Doctor Pro", layout="wide")
 
-# ==========================================
-# CONSTANTS & CONFIGURATION
-# ==========================================
 CORN_MODEL_ID = '1_1PcQqUFFiK9tgpXwivM6J7OJShL18jk'
 RICE_MODEL_ID = '1p2vZgq_FBigVnlhQPLQD4w2yjDn4zus3'
 COTTON_DISEASE_ID = '14d3ZHEA8GnOliO164BA811tWnZ-EhPm0'
@@ -38,9 +35,6 @@ COTTON_WEED_CLASSES = [
     'Carpetweeds', 'Morningglory', 'PalmerAmaranth', 'Purslane', 'Waterhemp'
 ]
 
-# ==========================================
-# FUNCTIONS
-# ==========================================
 @st.cache_resource
 def load_model(model_key):
     if model_key == 'Maize':
@@ -79,11 +73,9 @@ def predict_image(image, interpreter, model_key):
     output_data = interpreter.get_tensor(output_details[0]['index'])
     return output_data[0]
 
-# --- PURE CODE VISUALS (CSS SHAPES) ---
 def get_weather_visual(condition):
     condition = condition.lower()
     
-    # CSS Shapes created by code
     sun_html = """
     <div style="width:40px; height:40px; background:#FFD700; border-radius:50%; box-shadow: 0 0 10px orange; margin:auto;"></div>
     """
@@ -101,23 +93,20 @@ def get_weather_visual(condition):
         return sun_html
     elif "rain" in condition or "shower" in condition:
         return rain_html
-    else: # Default to Cloud
+    else:
         return cloud_html
 
 def get_weather(location):
     if not location: return None
     try:
-        # Request Metric (Celsius) by default from wttr.in
         url = f"https://wttr.in/{location}?format=%t|%h|%p|%C"
         response = requests.get(url)
         if response.status_code == 200:
             data = response.text.split("|")
             condition_text = data[3].strip()
             
-            # Ensure Celsius
             temp = data[0].strip()
             if "F" in temp:
-                 # Basic conversion fallback if API fails to give C
                  val = float(''.join(filter(str.isdigit, temp)))
                  temp = f"{int((val - 32) * 5/9)}°C"
             
@@ -168,9 +157,6 @@ def get_smart_advice(diagnosis, weather, location, mode):
         return response.choices[0].message.content
     except: return "AI Advice Unavailable"
 
-# ==========================================
-# MAIN UI
-# ==========================================
 st.sidebar.title("Agri-Doctor")
 st.sidebar.markdown("---")
 
@@ -211,7 +197,6 @@ if uploaded_file:
     with col2:
         weather_data = get_weather(user_location)
         if weather_data:
-            # PURE CODE WEATHER WIDGET
             st.markdown(f"""
             <div style="background-color:#ffffff; border:1px solid #e0e0e0; padding:15px; border-radius:10px; display:flex; align-items:center; justify-content:space-around; margin-bottom:20px;">
                 <div style="text-align:center;">
@@ -243,12 +228,10 @@ if uploaded_file:
                             label = res['label']
                             conf = res['conf']
                             
-                            # Determine Color Code
-                            color = "#dc3545" # Red
-                            if "Healthy" in label: color = "#28a745" # Green
-                            if "Weed" in label or label in COTTON_WEED_CLASSES: color = "#fd7e14" # Orange
+                            color = "#dc3545"
+                            if "Healthy" in label: color = "#28a745"
+                            if "Weed" in label or label in COTTON_WEED_CLASSES: color = "#fd7e14"
                             
-                            # PURE CODE CONFIDENCE BAR (CSS)
                             st.markdown(f"""
                                 <div style="margin-bottom: 15px; background:#f9f9f9; padding:5px; border-radius:5px;">
                                     <div style="font-weight:bold; color:{color}; font-size:14px; margin-bottom:2px;">
