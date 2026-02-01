@@ -11,58 +11,59 @@ from tensorflow.keras.applications import efficientnet, mobilenet
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(page_title="Agri-Doctor Pro", layout="wide", page_icon="🌿")
 
-# --- 2. CUSTOM CSS FOR STYLING ---
-# We use unsafe_allow_html=True to force Streamlit to apply this CSS
+# --- 2. CUSTOM CSS (Clean, Rounded, No Animations) ---
 st.markdown("""
     <style>
-    /* Global Rounding & Fonts */
+    /* Global Styles */
     .stButton>button {
         border-radius: 20px;
         background-color: #4CAF50;
         color: white;
         font-weight: bold;
         border: none;
-        padding: 10px 20px;
-    }
-    .stTextInput>div>div>input {
-        border-radius: 15px;
+        padding: 10px 25px;
     }
     
-    /* Weather Widget Styling */
+    /* Weather Widget */
     .weather-card {
-        background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        background: linear-gradient(135deg, #e0f7fa 0%, #ffffff 100%);
         border-radius: 20px;
-        padding: 15px;
-        text-align: center;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        margin-bottom: 20px;
+        padding: 20px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        border: 1px solid #b2ebf2;
         color: #333;
-        font-family: sans-serif;
-    }
-    .weather-main {
         display: flex;
-        justify-content: center;
         align-items: center;
-        gap: 20px;
+        justify-content: space-around;
+    }
+    .weather-icon {
+        font-size: 45px;
+        margin-right: 15px;
     }
     .weather-temp {
         font-size: 32px;
         font-weight: 800;
         margin: 0;
-    }
-    .weather-details {
-        text-align: left;
-        font-size: 14px;
-        line-height: 1.4;
+        color: #00796b;
     }
     
-    /* Result Cards */
-    .result-card {
-        background-color: #f8f9fa;
+    /* Result Bars */
+    .result-box {
+        background-color: #ffffff;
+        border: 1px solid #f0f0f0;
         border-radius: 15px;
         padding: 15px;
-        margin-bottom: 15px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        margin-bottom: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+    }
+    
+    /* AI Advice Box */
+    .advice-box {
+        background-color: #e8f5e9;
+        border-left: 5px solid #2e7d32;
+        padding: 20px;
+        border-radius: 10px;
+        margin-top: 20px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -78,39 +79,7 @@ RICE_CLASSES = ['Rice_Bacterial_Leaf_Blight', 'Rice_Brown_Spot', 'Rice_Healthy',
 COTTON_DISEASE_CLASSES = ['Bacterial Blight', 'Curl Virus', 'Healthy Leaf', 'Herbicide Growth Damage', 'Leaf Redding', 'Leaf Variegation']
 COTTON_WEED_CLASSES = ['Carpetweeds', 'Morningglory', 'PalmerAmaranth', 'Purslane', 'Waterhemp']
 
-# --- 4. WEATHER VISUALS (PURE CSS) ---
-def get_weather_visual(condition):
-    condition = condition.lower()
-    
-    # CSS Shapes for Weather Icons
-    sun_html = """
-    <div style="width:50px; height:50px; background:#FFD700; border-radius:50%; box-shadow: 0 0 15px orange; margin:auto; animation: spin 10s linear infinite;"></div>
-    """
-    
-    cloud_html = """
-    <div style="width:60px; height:30px; background:#fff; border-radius:20px; margin:auto; position:relative; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>
-    """
-    
-    rain_html = """
-    <div style="width:50px; height:25px; background:#778899; border-radius:20px; margin:auto;"></div>
-    <div style="display:flex; justify-content:center; gap:5px; margin-top:5px;">
-        <div style="width:3px; height:8px; background:#00BFFF; border-radius:2px;"></div>
-        <div style="width:3px; height:8px; background:#00BFFF; border-radius:2px;"></div>
-        <div style="width:3px; height:8px; background:#00BFFF; border-radius:2px;"></div>
-    </div>
-    """
-    
-    storm_html = """
-    <div style="width:50px; height:25px; background:#444; border-radius:20px; margin:auto;"></div>
-    <div style="text-align:center; color:#FFD700; font-size:18px; line-height:10px;">⚡</div>
-    """
-    
-    if "sun" in condition or "clear" in condition: return sun_html
-    elif "rain" in condition or "shower" in condition or "drizzle" in condition: return rain_html
-    elif "storm" in condition or "thunder" in condition: return storm_html
-    else: return cloud_html 
-
-# --- 5. FUNCTIONS ---
+# --- 4. FUNCTIONS ---
 @st.cache_resource
 def load_model(model_key):
     if model_key == 'Maize': file_id, filename = CORN_MODEL_ID, 'corn_model.tflite'
@@ -127,7 +96,9 @@ def load_model(model_key):
     return interpreter
 
 def predict_image(image, interpreter, model_key):
-    input_details = interpreter.get_input_details(); output_details = interpreter.get_output_details()
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+    
     img = image.resize((224, 224))
     img_array = np.array(img, dtype=np.float32)
     img_array = np.expand_dims(img_array, axis=0)
@@ -139,6 +110,15 @@ def predict_image(image, interpreter, model_key):
     interpreter.invoke()
     return interpreter.get_tensor(output_details[0]['index'])[0]
 
+def get_weather_emoji(condition):
+    condition = condition.lower()
+    if "sun" in condition or "clear" in condition: return "☀️"
+    elif "rain" in condition or "shower" in condition or "drizzle" in condition: return "🌧️"
+    elif "cloud" in condition: return "☁️"
+    elif "storm" in condition or "thunder" in condition: return "⛈️"
+    elif "snow" in condition: return "❄️"
+    else: return "🌤️"
+
 def get_weather(location):
     if not location: return None
     try:
@@ -147,15 +127,17 @@ def get_weather(location):
         if response.status_code == 200:
             data = response.text.split("|")
             temp = data[0].strip()
-            # Force Celsius Visual
+            # Force Celsius
             if "F" in temp:
                  val = float(''.join(filter(str.isdigit, temp)))
                  temp = f"{int((val - 32) * 5/9)}°C"
             
             return {
-                "temp": temp, "humidity": data[1].strip(), 
-                "precip": data[2].strip(), "condition": data[3].strip(),
-                "visual": get_weather_visual(data[3].strip())
+                "temp": temp, 
+                "humidity": data[1].strip(), 
+                "precip": data[2].strip(), 
+                "condition": data[3].strip(),
+                "icon": get_weather_emoji(data[3].strip())
             }
     except: return None
     return None
@@ -173,15 +155,37 @@ def analyze_quadrants(image, interpreter, classes, model_key):
         results[name] = {"label": classes[idx], "conf": conf, "img": img_crop}
     return results
 
-def get_smart_advice(diagnosis, weather, location, mode):
+def get_smart_advice(diagnosis, weather, location, crop):
     try:
         client = openai.OpenAI(api_key=st.secrets["openai_key"])
-        weather_txt = f"{weather['temp']}, {weather['condition']}" if weather else "Unknown"
-        prompt = f"Act as Agronomist. Issue: {diagnosis} in {mode}. Weather: {weather_txt} in {location}. Give 3-step solution."
-        return client.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}]).choices[0].message.content
-    except: return "AI Advice Unavailable"
+        
+        weather_txt = f"{weather['temp']}, Condition: {weather['condition']}, Humidity: {weather['humidity']}, Rain: {weather['precip']}" if weather else "Weather Data Unavailable"
+        
+        # IMPROVED PROMPT: Forces fertilizer names and weather logic
+        prompt = f"""
+        You are an expert Agronomist.
+        
+        DIAGNOSIS: The user's {crop} crop has '{diagnosis}'.
+        LOCATION: {location}
+        CURRENT WEATHER: {weather_txt}
+        
+        TASK: Provide a strict 3-part prescription.
+        1. FERTILIZERS/CHEMICALS: Name specific chemicals or fertilizers to cure '{diagnosis}'. 
+           *CRITICAL*: Modify this advice based on the weather (e.g., "Do not spray [Chemical Name] today because it is raining" or "High humidity requires [Specific Fungicide]").
+        2. ORGANIC SOLUTION: One home-made or organic remedy.
+        3. PREVENTATIVE MEASURE: One step to stop it from coming back.
+        
+        Keep it professional, concise, and bold key terms.
+        """
+        
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo", 
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content
+    except Exception as e: return f"AI Agronomist is offline. Error: {e}"
 
-# --- 6. MAIN UI ---
+# --- 5. MAIN UI ---
 st.sidebar.title("Agri-Doctor 👨‍⚕️")
 st.sidebar.markdown("---")
 
@@ -196,7 +200,7 @@ else:
     else: st.header("🌾 Rice Health"); model_key, current_classes = "Rice", RICE_CLASSES
 
 user_location = st.sidebar.text_input("Location", placeholder="e.g. Hyderabad")
-enable_ai = st.sidebar.checkbox("Enable AI Advice", value=True)
+enable_ai = st.sidebar.checkbox("Enable AI Agronomist", value=True)
 
 uploaded_file = st.file_uploader("Upload Leaf Image", type=["jpg", "png", "jpeg"])
 
@@ -205,32 +209,30 @@ if uploaded_file:
     with col1:
         image = Image.open(uploaded_file)
         st.image(image, caption='Uploaded Image', use_column_width=True)
-        # Force Rounded Images via CSS
         st.markdown('<style>img {border-radius: 15px;}</style>', unsafe_allow_html=True)
 
     with col2:
         weather_data = get_weather(user_location)
         if weather_data:
-            # --- WEATHER WIDGET (FIXED RENDERING) ---
-            # IMPORTANT: unsafe_allow_html=True MUST BE PRESENT
+            # --- WEATHER WIDGET (SIMPLE & CLEAN) ---
             st.markdown(f"""
             <div class="weather-card">
-                <div class="weather-main">
-                    <div>{weather_data['visual']}</div>
+                <div style="display:flex; align-items:center;">
+                    <span class="weather-icon">{weather_data['icon']}</span>
                     <div>
                         <p class="weather-temp">{weather_data['temp']}</p>
+                        <span style="color:#666; font-size:14px;">{weather_data['condition']}</span>
                     </div>
                 </div>
-                <div class="weather-details">
-                    <b>{weather_data['condition']}</b><br>
-                    Humidity: {weather_data['humidity']}<br>
-                    Precip: {weather_data['precip']}
+                <div style="font-size:13px; border-left:1px solid #ddd; padding-left:15px;">
+                    💧 <b>Humidity:</b> {weather_data['humidity']}<br>
+                    ☔ <b>Precip:</b> {weather_data['precip']}
                 </div>
             </div>
             """, unsafe_allow_html=True)
         
         if st.button('🚀 Run Diagnosis'):
-            with st.spinner('Analyzing...'):
+            with st.spinner('Analyzing crop health...'):
                 try:
                     interpreter = load_model(model_key)
                     quad_results = analyze_quadrants(image, interpreter, current_classes, model_key)
@@ -249,14 +251,16 @@ if uploaded_file:
                             if "Healthy" in label: color = "#28a745" # Green
                             if "Weed" in label or label in COTTON_WEED_CLASSES: color = "#fd7e14" # Orange
                             
-                            # --- PROGRESS BAR (FIXED RENDERING) ---
+                            # --- RESULT BAR (NO ANIMATION) ---
                             st.markdown(f"""
-                                <div class="result-card">
-                                    <div style="font-weight:bold; color:{color}; font-size:14px; margin-bottom:5px;">{label}</div>
-                                    <div style="width:100%; background:#e0e0e0; border-radius:10px; height:8px;">
-                                        <div style="width:{conf}%; background:{color}; height:8px; border-radius:10px;"></div>
+                                <div class="result-box">
+                                    <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                                        <span style="font-weight:bold; color:{color};">{label}</span>
+                                        <span style="color:#666; font-size:12px;">{conf:.0f}%</span>
                                     </div>
-                                    <div style="text-align:right; font-size:11px; color:#666; margin-top:2px;">{conf:.0f}%</div>
+                                    <div style="width:100%; background:#e0e0e0; border-radius:5px; height:8px;">
+                                        <div style="width:{conf}%; background:{color}; height:8px; border-radius:5px;"></div>
+                                    </div>
                                 </div>
                             """, unsafe_allow_html=True)
                             
@@ -266,14 +270,19 @@ if uploaded_file:
                         st.markdown("---")
                         final_issue = max(set(detections), key=detections.count) if detections else "Healthy/Unknown"
                         
-                        # --- SUCCESS BOX (FIXED RENDERING) ---
-                        st.markdown(f"""
-                        <div style="background-color:#d4edda; color:#155724; padding:15px; border-radius:15px; border:1px solid #c3e6cb; margin-bottom:10px;">
-                            <h4 style="margin:0;">✅ Diagnosis: {final_issue}</h4>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        # --- AI PRESCRIPTION SECTION ---
+                        st.subheader("🤖 AI Agronomist's Prescription")
                         
-                        advice = get_smart_advice(final_issue, weather_data, user_location, crop_choice)
-                        st.info(advice)
+                        with st.spinner("Generating weather-based advice..."):
+                            advice = get_smart_advice(final_issue, weather_data, user_location, crop_choice)
+                            
+                            st.markdown(f"""
+                            <div class="advice-box">
+                                <h4 style="margin-top:0; color:#2e7d32;">Diagnosis: {final_issue}</h4>
+                                <div style="color:#333; line-height:1.6;">
+                                    {advice.replace(chr(10), '<br>')}
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
                         
                 except Exception as e: st.error(f"Error: {str(e)}")
