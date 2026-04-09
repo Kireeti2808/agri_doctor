@@ -23,8 +23,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 1. MODEL IDS & CLASSES ---
-ROUTER_MODEL_ID = 'YOUR_GOOGLE_DRIVE_ID_HERE' # Paste your new 4-class router ID here
+ROUTER_MODEL_ID = '1_bKlppoOmlI88EBw2GuW9tnjf01FKuGQ' 
 CORN_MODEL_ID = '1_1PcQqUFFiK9tgpXwivM6J7OJShL18jk'
 RICE_MODEL_ID = '1p2vZgq_FBigVnlhQPLQD4w2yjDn4zus3'
 COTTON_DISEASE_ID = '14d3ZHEA8GnOliO164BA811tWnZ-EhPm0'
