@@ -29,7 +29,7 @@ RICE_MODEL_ID = '1p2vZgq_FBigVnlhQPLQD4w2yjDn4zus3'
 COTTON_DISEASE_ID = '14d3ZHEA8GnOliO164BA811tWnZ-EhPm0'
 COTTON_WEED_ID = '1Sk2h23GtVLPHBJ700Ld4AEOU8ra9dRmH'
 
-ROUTER_CLASSES = ['Cotton', 'Maize', 'Rice', 'Weed_Only']
+ROUTER_CLASSES = ['Cotton', 'Maize', 'Rice']
 CORN_CLASSES = ['Maize_Blight', 'Maize_Common_Rust', 'Maize_Gray_Leaf_Spot', 'Maize_Healthy', 'Weed_Broadleaf', 'Weed_Grass']
 RICE_CLASSES = ['Rice_Bacterial_Leaf_Blight', 'Rice_Brown_Spot', 'Rice_Healthy', 'Rice_Leaf_Blast', 'Rice_Leaf_scald', 'Rice_Sheath_Blight', 'Weed_Broadleaf', 'Weed_Grass']
 COTTON_DISEASE_CLASSES = ['Bacterial Blight', 'Curl Virus', 'Healthy Leaf', 'Herbicide Growth Damage', 'Leaf Redding', 'Leaf Variegation']
@@ -43,7 +43,6 @@ def load_model(model_key):
     elif model_key == 'Cotton_Disease': file_id, filename = COTTON_DISEASE_ID, 'cotton_disease.tflite'
     elif model_key == 'Cotton_Weed': file_id, filename = COTTON_WEED_ID, 'cotton_weed.tflite'
     
-    # Fallback to prevent crash if Router ID isn't pasted yet
     if model_key == 'Router' and file_id == 'YOUR_GOOGLE_DRIVE_ID_HERE': return None
     
     if not os.path.exists(filename):
@@ -58,11 +57,13 @@ def predict_image(image, interpreter, model_key):
     input_details = interpreter.get_input_details()
     output_details = interpreter.get_output_details()
     
-    img = image.resize((224, 224))
+    img = image.convert('RGB').resize((224, 224))
     img_array = np.array(img, dtype=np.float32)
     img_array = np.expand_dims(img_array, axis=0)
     
-    if 'Cotton' in model_key or model_key == 'Router': 
+    if model_key == 'Router':
+        pass
+    elif 'Cotton' in model_key: 
         img_array = mobilenet.preprocess_input(img_array)
     else: 
         img_array = efficientnet.preprocess_input(img_array)
@@ -71,16 +72,15 @@ def predict_image(image, interpreter, model_key):
     interpreter.invoke()
     return interpreter.get_tensor(output_details[0]['index'])[0]
 
-# --- 2. OPEN-METEO WEATHER INTEGRATION ---
 def get_wmo_weather_info(code):
-    if code == 0: return "Clear sky", "☀️"
-    elif code in [1, 2, 3]: return "Partly cloudy", "🌤️"
-    elif code in [45, 48]: return "Fog", "🌫️"
-    elif code in [51, 53, 55, 56, 57, 61, 63, 65, 66, 67]: return "Rain", "🌧️"
-    elif code in [71, 73, 75, 77]: return "Snow", "❄️"
-    elif code in [80, 81, 82]: return "Rain showers", "🌦️"
-    elif code in [95, 96, 99]: return "Thunderstorm", "⛈️"
-    return "Unknown", "🌤️"
+    if code == 0: return "Clear sky", ""
+    elif code in [1, 2, 3]: return "Partly cloudy", ""
+    elif code in [45, 48]: return "Fog", ""
+    elif code in [51, 53, 55, 56, 57, 61, 63, 65, 66, 67]: return "Rain", ""
+    elif code in [71, 73, 75, 77]: return "Snow", ""
+    elif code in [80, 81, 82]: return "Rain showers", ""
+    elif code in [95, 96, 99]: return "Thunderstorm", ""
+    return "Unknown", ""
 
 def get_weather(city_name):
     if not city_name: return None
@@ -95,14 +95,13 @@ def get_weather(city_name):
         
         condition_text, icon = get_wmo_weather_info(weather_res['weather_code'])
         return {
-            "temp": f"{weather_res['temperature_2m']}°C", 
+            "temp": f"{weather_res['temperature_2m']}C", 
             "humidity": f"{weather_res['relative_humidity_2m']}%", 
             "precip": f"{weather_res['precipitation']}mm", 
             "condition": condition_text, "icon": icon
         }
     except: return None
 
-# --- 3. QUADRANT AND GPT LOGIC ---
 def analyze_quadrants(image, interpreter, classes, model_key):
     w, h = image.size; mid_w, mid_h = w // 2, h // 2
     quadrants = {
@@ -127,17 +126,16 @@ def get_smart_advice(disease_detected, weed_detected, weather, location, crop):
         prompt = f"""
         You are an expert Agronomist AI. CROP: {crop}. ISSUES: {diagnosis_str}. LOCATION: {location}. WEATHER: {weather_txt}.
         Provide a concise management plan. 
-        1. **DIAGNOSIS SUMMARY**. 
-        2. **WEATHER CHECK**: (Can they spray chemicals with {weather.get('humidity', 'N/A')} humidity and {weather.get('precip', '0mm')} rain?). 
-        3. **ACTION PLAN**: (Specific Fungicide/Herbicide. Can they mix them?).
-        4. **ORGANIC ALTERNATIVE**.
+        1. DIAGNOSIS SUMMARY. 
+        2. WEATHER CHECK: (Can they spray chemicals with {weather.get('humidity', 'N/A')} humidity and {weather.get('precip', '0mm')} rain?). 
+        3. ACTION PLAN: (Specific Fungicide/Herbicide. Can they mix them?).
+        4. ORGANIC ALTERNATIVE.
         Keep it structured and bold. Avoid markdown points like '-'.
         """
         response = client.chat.completions.create(model="gpt-3.5-turbo", messages=[{"role": "user", "content": prompt}])
         return response.choices[0].message.content
     except Exception as e: return f"AI Agronomist is offline. Error: {e}"
 
-# --- 4. MAIN UI ---
 st.sidebar.title("Agri-Doctor Pro")
 st.sidebar.markdown("---")
 user_location = st.sidebar.text_input("Farm Location", placeholder="e.g. Hyderabad")
@@ -153,7 +151,6 @@ if uploaded_file:
         st.image(image, caption='Uploaded Image', use_column_width=True)
 
     with col2:
-        # --- A. AUTOMATIC ROUTING & SAFETY NET ---
         router_interpreter = load_model('Router')
         if router_interpreter:
             router_preds = predict_image(image, router_interpreter, 'Router')
@@ -161,20 +158,18 @@ if uploaded_file:
             conf_score = router_preds[crop_idx] * 100
             detected_subject = ROUTER_CLASSES[crop_idx]
             
-            # Out-of-Distribution Safety Net
             if conf_score < 75.0: detected_subject = "Weed_Only"
         else:
-            detected_subject, conf_score = "Maize", 100.0 # Fallback for testing
+            detected_subject, conf_score = "Maize", 100.0
 
         if detected_subject == "Weed_Only":
-            st.warning("⚠️ Unrecognized Crop or Isolated Weed Detected.")
+            st.warning("Unrecognized Crop or Isolated Weed Detected.")
             st.info("The AI could not confidently identify Maize, Rice, or Cotton. To safely prescribe chemicals, please manually confirm your field type:")
             final_crop_choice = st.radio("Select field context:", ["Maize", "Rice", "Cotton"])
         else:
-            st.success(f"🌾 Auto-Detected Crop: **{detected_subject}** ({conf_score:.1f}% confidence)")
+            st.success(f"Auto-Detected Crop: {detected_subject} ({conf_score:.1f}% confidence)")
             final_crop_choice = detected_subject
 
-        # Set specific models based on the final decision
         if final_crop_choice == "Cotton":
             st.write("---")
             analysis_type = st.radio("Cotton Focus:", ["Leaf Disease", "Weed Type"], horizontal=True)
@@ -184,7 +179,6 @@ if uploaded_file:
         else:
             model_key, current_classes = "Rice", RICE_CLASSES
 
-        # --- B. OPEN-METEO WEATHER VISUALS ---
         weather_data = get_weather(user_location)
         if weather_data:
             st.markdown(f"""
@@ -203,7 +197,6 @@ if uploaded_file:
             </div>
             """, unsafe_allow_html=True)
         
-        # --- C. RUN FULL DIAGNOSIS ---
         if st.button('Run Deep Diagnosis'):
             with st.spinner(f'Running {final_crop_choice} Quadrant Analysis...'):
                 try:
@@ -252,7 +245,7 @@ if uploaded_file:
                             advice = get_smart_advice(final_disease, final_weed, weather_data, user_location, final_crop_choice)
                             st.markdown(f"""
                             <div class="advice-box">
-                                <h4 style="margin-top:0; color:#1565c0;">🤖 AI Agronomist Prescription</h4>
+                                <h4 style="margin-top:0; color:#1565c0;">AI Agronomist Prescription</h4>
                                 {advice.replace(chr(10), '<br>')}
                             </div>
                             """, unsafe_allow_html=True)
