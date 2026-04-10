@@ -23,7 +23,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-ROUTER_MODEL_ID = '1_bKlppoOmlI88EBw2GuW9tnjf01FKuGQ' 
+ROUTER_MODEL_ID = '10LuRi-n6wFu4um9deAWBu0sr0-8e1MLV' 
 CORN_MODEL_ID = '1_1PcQqUFFiK9tgpXwivM6J7OJShL18jk'
 RICE_MODEL_ID = '1p2vZgq_FBigVnlhQPLQD4w2yjDn4zus3'
 COTTON_DISEASE_ID = '14d3ZHEA8GnOliO164BA811tWnZ-EhPm0'
