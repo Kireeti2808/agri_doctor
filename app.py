@@ -37,7 +37,7 @@ COTTON_WEED_CLASSES = ['Carpetweeds', 'Morningglory', 'PalmerAmaranth', 'Purslan
 
 @st.cache_resource
 def load_model(model_key):
-    if model_key == 'Router': file_id, filename = ROUTER_MODEL_ID, 'crop_router.tflite'
+    if model_key == 'Router': file_id, filename = ROUTER_MODEL_ID, 'crop_router_v2.tflite'
     elif model_key == 'Maize': file_id, filename = CORN_MODEL_ID, 'corn_model.tflite'
     elif model_key == 'Rice': file_id, filename = RICE_MODEL_ID, 'rice_model.tflite'
     elif model_key == 'Cotton_Disease': file_id, filename = COTTON_DISEASE_ID, 'cotton_disease.tflite'
