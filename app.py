@@ -66,7 +66,8 @@ def _cached_load_model(model_key):
 def load_model(model_key):
     # Bypass resource cache ONLY for Cotton to force a fresh download and reload
     if model_key == 'Cotton':
-        file_id, filename = COTTON_MODEL_ID, 'cotton_doctor_v1.tflite'
+        # Change filename to v2 to force gdown to download the fresh file from Drive
+        file_id, filename = COTTON_MODEL_ID, 'cotton_doctor_v2.tflite'
         if not os.path.exists(filename):
             with st.spinner("Downloading Fresh Cotton Model..."):
                 gdown.download(f'https://drive.google.com/uc?id={file_id}', filename, quiet=False)
