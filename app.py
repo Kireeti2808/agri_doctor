@@ -34,11 +34,18 @@ ROUTER_CLASSES = ['Cotton', 'Maize', 'Rice']
 CORN_CLASSES = ['Maize_Blight', 'Maize_Common_Rust', 'Maize_Gray_Leaf_Spot', 'Maize_Healthy', 'Weed_Broadleaf', 'Weed_Grass']
 RICE_CLASSES = ['Rice_Bacterial_Leaf_Blight', 'Rice_Brown_Spot', 'Rice_Healthy', 'Rice_Leaf_Blast', 'Rice_Leaf_scald', 'Rice_Sheath_Blight', 'Weed_Broadleaf', 'Weed_Grass']
 
-# Unified Cotton Classes (Diseases + Healthy + Weeds)
+# Unified Cotton Classes (Strict Alphabetical Order from Notebook Training)
 COTTON_CLASSES = [
-    'Cotton_Bacterial_Blight', 'Cotton_Curl_Virus', 'Cotton_Healthy_Leaf', 
-    'Cotton_Herbicide_Damage', 'Cotton_Leaf_Redding', 'Cotton_Leaf_Variegation',
-    'Weed_Carpetweeds', 'Weed_Morningglory', 'Weed_PalmerAmaranth', 'Weed_Purslane', 'Weed_Waterhemp'
+    'Disease_Bacterial_Blight',
+    'Disease_Curl_Virus',
+    'Disease_Healthy',
+    'Disease_Herbicide_Damage',
+    'Disease_Leaf_Reddening',
+    'Weed_Carpetweed',
+    'Weed_Morningglory',
+    'Weed_Palmer_Amaranth',
+    'Weed_Purslane',
+    'Weed_Waterhemp'
 ]
 
 @st.cache_resource
@@ -106,6 +113,9 @@ def get_weather(city_name):
     except: return None
 
 def analyze_quadrants(image, interpreter, classes, model_key):
+    # Full image prediction to prevent low confidence due to cropped feature fragmentation
+    global_preds = predict_image(image, interpreter, model_key)
+    
     w, h = image.size; mid_w, mid_h = w // 2, h // 2
     quadrants = {
         "Top-Left": image.crop((0, 0, mid_w, mid_h)), "Top-Right": image.crop((mid_w, 0, w, mid_h)),
@@ -114,7 +124,11 @@ def analyze_quadrants(image, interpreter, classes, model_key):
     results = {}
     for name, img_crop in quadrants.items():
         preds = predict_image(img_crop, interpreter, model_key)
-        idx = np.argmax(preds); conf = np.max(preds) * 100
+        
+        # Blend local prediction with global prediction (60% local, 40% global)
+        blended_preds = (0.6 * preds) + (0.4 * global_preds)
+        idx = np.argmax(blended_preds)
+        conf = np.max(blended_preds) * 100
         results[name] = {"label": classes[idx], "conf": conf, "img": img_crop}
     return results
 
@@ -230,17 +244,23 @@ if uploaded_file:
                                 </div>
                             """, unsafe_allow_html=True)
                             
-                            if conf > 50 and not is_healthy:
+                            if conf > 40 and not is_healthy:
                                 detected_weeds.append(label) if is_weed else detected_diseases.append(label)
                     
                     final_disease = max(set(detected_diseases), key=detected_diseases.count) if detected_diseases else None
                     final_weed = max(set(detected_weeds), key=detected_weeds.count) if detected_weeds else None
                     
-                    if final_disease and final_weed: st.error(f"Multiple Issues Detected: {final_disease} AND {final_weed}")
-                    elif final_disease: st.error(f"Disease Detected: {final_disease}")
-                    elif final_weed: st.warning(f"Weed Detected: {final_weed}")
-                    else: st.success("Crop appears Healthy")
-
+                    if final_disease and final_weed: 
+                        st.error(f"Multiple Issues Detected: {final_disease} AND {final_weed}")
+                    elif final_disease: 
+                        st.error(f"Disease Detected: {final_disease}")
+                    elif final_weed: 
+                        st.warning(f"Weed Detected: {final_weed}")
+                    else: 
+                        healthy_count = sum(1 for res in quad_results.values() if "Healthy" in res['label'])
+                        if healthy_count >= 2:
+                            st.success("Crop appears Healthy")
+                            
                     if enable_ai and (final_disease or final_weed):
                         with st.spinner("Consulting AI Agronomist..."):
                             advice = get_smart_advice(final_disease, final_weed, weather_data, user_location, final_crop_choice)
@@ -250,7 +270,7 @@ if uploaded_file:
                                 {advice.replace(chr(10), '<br>')}
                             </div>
                             """, unsafe_allow_html=True)
-                    elif enable_ai:
+                    elif enable_ai and healthy_count >= 2:
                         st.info("Crop is healthy. No medical prescription needed. Keep monitoring!")
                         
                 except Exception as e: st.error(f"Analysis Error: {str(e)}")
