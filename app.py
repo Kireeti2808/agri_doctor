@@ -48,25 +48,37 @@ COTTON_CLASSES = [
     'Weed_Waterhemp'
 ]
 
+# Cached helper for Router, Maize, and Rice models
 @st.cache_resource
-def load_model(model_key):
+def _cached_load_model(model_key):
     if model_key == 'Router': file_id, filename = ROUTER_MODEL_ID, 'crop_router_v2.tflite'
     elif model_key == 'Maize': file_id, filename = CORN_MODEL_ID, 'corn_model.tflite'
     elif model_key == 'Rice': file_id, filename = RICE_MODEL_ID, 'rice_model.tflite'
-    # Changed filename to cotton_doctor_v1.tflite to force a fresh download
-    elif model_key == 'Cotton': file_id, filename = COTTON_MODEL_ID, 'cotton_doctor_v1.tflite'
     
     if not os.path.exists(filename):
         with st.spinner(f"Downloading {model_key} Model..."):
             gdown.download(f'https://drive.google.com/uc?id={file_id}', filename, quiet=False)
-    
+            
     interpreter = tf.lite.Interpreter(model_path=filename)
     interpreter.allocate_tensors()
-    
-    # DEBUG LINE: Displays the output shape directly in the sidebar
-    st.sidebar.info(f"Loaded {model_key} Output Shape: {interpreter.get_output_details()[0]['shape']}")
-    
     return interpreter
+
+def load_model(model_key):
+    # Bypass resource cache ONLY for Cotton to force a fresh download and reload
+    if model_key == 'Cotton':
+        file_id, filename = COTTON_MODEL_ID, 'cotton_doctor_v1.tflite'
+        if not os.path.exists(filename):
+            with st.spinner("Downloading Fresh Cotton Model..."):
+                gdown.download(f'https://drive.google.com/uc?id={file_id}', filename, quiet=False)
+        interpreter = tf.lite.Interpreter(model_path=filename)
+        interpreter.allocate_tensors()
+        
+        # Debug line: verifies loaded output tensor shape in the sidebar
+        st.sidebar.info(f"Loaded Cotton Output Shape: {interpreter.get_output_details()[0]['shape']}")
+        return interpreter
+
+    # Use existing cache for Router, Maize, and Rice
+    return _cached_load_model(model_key)
 
 def predict_image(image, interpreter, model_key):
     input_details = interpreter.get_input_details()
