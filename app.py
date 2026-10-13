@@ -23,27 +23,30 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Google Drive File IDs
 ROUTER_MODEL_ID = '10LuRi-n6wFu4um9deAWBu0sr0-8e1MLV' 
 CORN_MODEL_ID = '1_1PcQqUFFiK9tgpXwivM6J7OJShL18jk'
 RICE_MODEL_ID = '1p2vZgq_FBigVnlhQPLQD4w2yjDn4zus3'
-COTTON_DISEASE_ID = '14d3ZHEA8GnOliO164BA811tWnZ-EhPm0'
-COTTON_WEED_ID = '1Sk2h23GtVLPHBJ700Ld4AEOU8ra9dRmH'
+COTTON_MODEL_ID = '1tX19vWEBa9pyZCd_7hIGC8j2fwrHQEie'
 
+# Unified Class Mappings
 ROUTER_CLASSES = ['Cotton', 'Maize', 'Rice']
 CORN_CLASSES = ['Maize_Blight', 'Maize_Common_Rust', 'Maize_Gray_Leaf_Spot', 'Maize_Healthy', 'Weed_Broadleaf', 'Weed_Grass']
 RICE_CLASSES = ['Rice_Bacterial_Leaf_Blight', 'Rice_Brown_Spot', 'Rice_Healthy', 'Rice_Leaf_Blast', 'Rice_Leaf_scald', 'Rice_Sheath_Blight', 'Weed_Broadleaf', 'Weed_Grass']
-COTTON_DISEASE_CLASSES = ['Bacterial Blight', 'Curl Virus', 'Healthy Leaf', 'Herbicide Growth Damage', 'Leaf Redding', 'Leaf Variegation']
-COTTON_WEED_CLASSES = ['Carpetweeds', 'Morningglory', 'PalmerAmaranth', 'Purslane', 'Waterhemp']
+
+# Unified Cotton Classes (Diseases + Healthy + Weeds)
+COTTON_CLASSES = [
+    'Cotton_Bacterial_Blight', 'Cotton_Curl_Virus', 'Cotton_Healthy_Leaf', 
+    'Cotton_Herbicide_Damage', 'Cotton_Leaf_Redding', 'Cotton_Leaf_Variegation',
+    'Weed_Carpetweeds', 'Weed_Morningglory', 'Weed_PalmerAmaranth', 'Weed_Purslane', 'Weed_Waterhemp'
+]
 
 @st.cache_resource
 def load_model(model_key):
     if model_key == 'Router': file_id, filename = ROUTER_MODEL_ID, 'crop_router_v2.tflite'
     elif model_key == 'Maize': file_id, filename = CORN_MODEL_ID, 'corn_model.tflite'
     elif model_key == 'Rice': file_id, filename = RICE_MODEL_ID, 'rice_model.tflite'
-    elif model_key == 'Cotton_Disease': file_id, filename = COTTON_DISEASE_ID, 'cotton_disease.tflite'
-    elif model_key == 'Cotton_Weed': file_id, filename = COTTON_WEED_ID, 'cotton_weed.tflite'
-    
-    if model_key == 'Router' and file_id == 'YOUR_GOOGLE_DRIVE_ID_HERE': return None
+    elif model_key == 'Cotton': file_id, filename = COTTON_MODEL_ID, 'cotton_doctor.tflite'
     
     if not os.path.exists(filename):
         with st.spinner(f"Downloading {model_key} Model..."):
@@ -63,7 +66,7 @@ def predict_image(image, interpreter, model_key):
     
     if model_key == 'Router':
         pass
-    elif 'Cotton' in model_key: 
+    elif model_key == 'Cotton': 
         img_array = mobilenet.preprocess_input(img_array)
     else: 
         img_array = efficientnet.preprocess_input(img_array)
@@ -171,9 +174,7 @@ if uploaded_file:
             final_crop_choice = detected_subject
 
         if final_crop_choice == "Cotton":
-            st.write("---")
-            analysis_type = st.radio("Cotton Focus:", ["Leaf Disease", "Weed Type"], horizontal=True)
-            model_key, current_classes = ("Cotton_Disease", COTTON_DISEASE_CLASSES) if analysis_type == "Leaf Disease" else ("Cotton_Weed", COTTON_WEED_CLASSES)
+            model_key, current_classes = "Cotton", COTTON_CLASSES
         elif final_crop_choice == "Maize":
             model_key, current_classes = "Maize", CORN_CLASSES
         else:
@@ -213,7 +214,7 @@ if uploaded_file:
                             st.image(res['img'], width=150)
                             label, conf = res['label'], res['conf']
                             
-                            is_weed = "Weed" in label or label in COTTON_WEED_CLASSES
+                            is_weed = "Weed" in label
                             is_healthy = "Healthy" in label
                             color = "#28a745" if is_healthy else ("#fd7e14" if is_weed else "#dc3545")
                             
