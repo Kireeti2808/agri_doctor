@@ -102,7 +102,7 @@ st.markdown(
 # ============================================================
 
 ROUTER_MODEL_ID = "10LuRi-n6wFu4um9deAWBu0sr0-8e1MLV"
-CORN_MODEL_ID = "1_1PcQQUFF1K9tgpXwivM6J7OJShl18jk"
+CORN_MODEL_ID = "1_1PcQqUFFiK9tgpXwivM6J7OJShL18jk"
 RICE_MODEL_ID = "1p2vZqa_FBigVn1hQPLQD4w2yDn4zus3"
 
 # Make sure this is the Google Drive file ID of the NEW Cotton model.
