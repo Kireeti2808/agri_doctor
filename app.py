@@ -173,22 +173,6 @@ def get_drive_download_url(file_id):
 
 
 def download_model(file_id, destination, force_download=False):
-    """
-    Download a model from Google Drive.
-
-    Parameters
-    ----------
-    file_id:
-        Google Drive file ID.
-
-    destination:
-        Local destination path.
-
-    force_download:
-        If True, always re-download and replace the existing file.
-        If False, reuse the existing local file.
-    """
-
     destination = Path(destination)
 
     if destination.exists() and not force_download:
@@ -202,36 +186,35 @@ def download_model(file_id, destination, force_download=False):
         if temporary_path.exists():
             temporary_path.unlink()
 
+        # Removed fuzzy=False here
         downloaded_file = gdown.download(
             url=get_drive_download_url(file_id),
             output=str(temporary_path),
-            quiet=False,
-            fuzzy=False
+            quiet=False
         )
 
         if downloaded_file is None or not temporary_path.exists():
             raise RuntimeError(
-                f"Failed to download model from Google Drive. File ID: {file_id}"
+                f"Failed to download model from Google Drive."
             )
 
         if temporary_path.stat().st_size == 0:
             temporary_path.unlink(missing_ok=True)
-            raise RuntimeError("The downloaded Cotton model file is empty.")
+            raise RuntimeError("The downloaded model file is empty.")
 
-        # Replace the previous Cotton model only after the new download succeeds.
         os.replace(temporary_path, destination)
 
     else:
+        # Removed fuzzy=False here as well
         downloaded_file = gdown.download(
             url=get_drive_download_url(file_id),
             output=str(destination),
-            quiet=False,
-            fuzzy=False
+            quiet=False
         )
 
         if downloaded_file is None or not destination.exists():
             raise RuntimeError(
-                f"Failed to download model from Google Drive. File ID: {file_id}"
+                f"Failed to download model from Google Drive."
             )
 
         if destination.stat().st_size == 0:
@@ -239,7 +222,6 @@ def download_model(file_id, destination, force_download=False):
             raise RuntimeError(f"Downloaded model is empty: {destination}")
 
     return destination
-
 
 # ============================================================
 # CACHED MODEL LOADER
