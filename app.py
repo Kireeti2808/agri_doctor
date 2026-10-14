@@ -101,7 +101,7 @@ st.markdown(
 # GOOGLE DRIVE MODEL IDS
 # ============================================================
 
-ROUTER_MODEL_ID = "10LuRi-n6wFw4um9deAWBu0sr0-8e1MLV"
+ROUTER_MODEL_ID = "10LuRi-n6wFu4um9deAWBu0sr0-8e1MLV"
 CORN_MODEL_ID = "1_1PcQQUFF1K9tgpXwivM6J7OJShl18jk"
 RICE_MODEL_ID = "1p2vZqa_FBigVn1hQPLQD4w2yDn4zus3"
 
