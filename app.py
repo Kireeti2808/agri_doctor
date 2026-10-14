@@ -331,12 +331,10 @@ def load_model(model_key):
     Router, Maize and Rice:
         Loaded through Streamlit resource cache.
     """
-
     if model_key == "Cotton":
-        pass
+        return load_fresh_cotton_model()
 
     return cached_load_model(model_key)
-
 
 # ============================================================
 # INPUT PREPROCESSING
