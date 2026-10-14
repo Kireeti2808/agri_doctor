@@ -341,12 +341,6 @@ def load_model(model_key):
 # ============================================================
 
 def prepare_model_input(image, interpreter, model_key):
-    """
-    Resize and preprocess an image according to the selected model.
-
-    Also supports float32, uint8 and int8 TensorFlow Lite inputs.
-    """
-
     input_details = interpreter.get_input_details()
     input_info = input_details[0]
 
@@ -354,59 +348,36 @@ def prepare_model_input(image, interpreter, model_key):
     input_dtype = input_info["dtype"]
 
     if len(input_shape) != 4:
-        raise ValueError(
-            f"Unexpected model input shape: {input_shape}"
-        )
+        raise ValueError(f"Unexpected model input shape: {input_shape}")
 
     input_height = int(input_shape[1])
     input_width = int(input_shape[2])
 
-    img = image.convert("RGB").resize(
-        (input_width, input_height)
-    )
-
+    img = image.convert("RGB").resize((input_width, input_height))
     image_array = np.asarray(img, dtype=np.float32)
 
     if model_key == "Cotton":
-        image_array = mobilenet.preprocess_input(image_array)
-
+        pass  # New cotton model expects raw 0-255 pixels, no preprocessing
     elif model_key in ["Maize", "Rice"]:
         image_array = efficientnet.preprocess_input(image_array)
-
     elif model_key == "Router":
-        # The original Router preprocessing is preserved.
-        # If the Router was trained using normalization, change this
-        # to exactly match its training preprocessing.
         pass
 
     image_array = np.expand_dims(image_array, axis=0)
 
     if input_dtype in [np.uint8, np.int8]:
         scale, zero_point = input_info["quantization"]
-
         if scale and scale > 0:
             image_array = image_array / scale + zero_point
 
         if input_dtype == np.uint8:
-            image_array = np.clip(
-                image_array,
-                0,
-                255
-            ).astype(np.uint8)
-
+            image_array = np.clip(image_array, 0, 255).astype(np.uint8)
         else:
-            image_array = np.clip(
-                image_array,
-                -128,
-                127
-            ).astype(np.int8)
-
+            image_array = np.clip(image_array, -128, 127).astype(np.int8)
     else:
         image_array = image_array.astype(input_dtype)
 
     return image_array
-
-
 # ============================================================
 # PREDICTION
 # ============================================================
