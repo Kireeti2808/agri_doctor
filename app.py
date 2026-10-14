@@ -8,7 +8,7 @@ import requests
 import streamlit as st
 import tensorflow as tf
 from PIL import Image
-from tensorflow.keras.applications import efficientnet, mobilenet
+from tensorflow.keras.applications import efficientnet
 
 
 # ============================================================
@@ -155,7 +155,7 @@ COTTON_CLASSES = [
     "Disease_Healthy",
     "Disease_Herbicide_Damage",
     "Disease_Leaf_Reddening",
-    "Weed_Carpweed",
+    "Weed_Carpetweed",
     "Weed_Morningglory",
     "Weed_Palmer_Amaranth",
     "Weed_Purslane",
@@ -333,7 +333,7 @@ def load_model(model_key):
     """
 
     if model_key == "Cotton":
-        return load_fresh_cotton_model()
+        pass
 
     return cached_load_model(model_key)
 
