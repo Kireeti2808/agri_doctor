@@ -106,7 +106,7 @@ CORN_MODEL_ID = "1_1PcQQUFF1K9tgpXwivM6J7OJShl18jk"
 RICE_MODEL_ID = "1p2vZqa_FBigVn1hQPLQD4w2yDn4zus3"
 
 # Make sure this is the Google Drive file ID of the NEW Cotton model.
-COTTON_MODEL_ID = "1tX19wVEBa9pyZCd_7hIGC8j2fwrHQEie"
+COTTON_MODEL_ID = "1tX19vWEBa9pyZCd_7hIGC8j2fwrHQEie"
 
 
 # ============================================================
