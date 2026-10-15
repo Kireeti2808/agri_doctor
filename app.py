@@ -161,6 +161,8 @@ COTTON_CLASSES = [
     "Weed_Purslane",
     "Weed_Waterhemp"
 ]
+
+
 # ============================================================
 # MODEL DOWNLOAD HELPERS
 # ============================================================
@@ -186,7 +188,6 @@ def download_model(file_id, destination, force_download=False):
         if temporary_path.exists():
             temporary_path.unlink()
 
-        # Removed fuzzy=False here
         downloaded_file = gdown.download(
             url=get_drive_download_url(file_id),
             output=str(temporary_path),
@@ -195,7 +196,7 @@ def download_model(file_id, destination, force_download=False):
 
         if downloaded_file is None or not temporary_path.exists():
             raise RuntimeError(
-                f"Failed to download model from Google Drive."
+                "Failed to download model from Google Drive."
             )
 
         if temporary_path.stat().st_size == 0:
@@ -205,7 +206,6 @@ def download_model(file_id, destination, force_download=False):
         os.replace(temporary_path, destination)
 
     else:
-        # Removed fuzzy=False here as well
         downloaded_file = gdown.download(
             url=get_drive_download_url(file_id),
             output=str(destination),
@@ -214,7 +214,7 @@ def download_model(file_id, destination, force_download=False):
 
         if downloaded_file is None or not destination.exists():
             raise RuntimeError(
-                f"Failed to download model from Google Drive."
+                "Failed to download model from Google Drive."
             )
 
         if destination.stat().st_size == 0:
@@ -222,6 +222,7 @@ def download_model(file_id, destination, force_download=False):
             raise RuntimeError(f"Downloaded model is empty: {destination}")
 
     return destination
+
 
 # ============================================================
 # CACHED MODEL LOADER
@@ -336,11 +337,18 @@ def load_model(model_key):
 
     return cached_load_model(model_key)
 
+
 # ============================================================
 # INPUT PREPROCESSING
 # ============================================================
 
 def prepare_model_input(image, interpreter, model_key):
+    """
+    Resize and preprocess an image according to the selected model.
+
+    Also supports float32, uint8 and int8 TensorFlow Lite inputs.
+    """
+
     input_details = interpreter.get_input_details()
     input_info = input_details[0]
 
@@ -348,18 +356,25 @@ def prepare_model_input(image, interpreter, model_key):
     input_dtype = input_info["dtype"]
 
     if len(input_shape) != 4:
-        raise ValueError(f"Unexpected model input shape: {input_shape}")
+        raise ValueError(
+            f"Unexpected model input shape: {input_shape}"
+        )
 
     input_height = int(input_shape[1])
     input_width = int(input_shape[2])
 
-    img = image.convert("RGB").resize((input_width, input_height))
+    img = image.convert("RGB").resize(
+        (input_width, input_height)
+    )
+
     image_array = np.asarray(img, dtype=np.float32)
 
     if model_key == "Cotton":
         pass  # New cotton model expects raw 0-255 pixels, no preprocessing
+
     elif model_key in ["Maize", "Rice"]:
         image_array = efficientnet.preprocess_input(image_array)
+
     elif model_key == "Router":
         pass
 
@@ -367,17 +382,30 @@ def prepare_model_input(image, interpreter, model_key):
 
     if input_dtype in [np.uint8, np.int8]:
         scale, zero_point = input_info["quantization"]
+
         if scale and scale > 0:
             image_array = image_array / scale + zero_point
 
         if input_dtype == np.uint8:
-            image_array = np.clip(image_array, 0, 255).astype(np.uint8)
+            image_array = np.clip(
+                image_array,
+                0,
+                255
+            ).astype(np.uint8)
+
         else:
-            image_array = np.clip(image_array, -128, 127).astype(np.int8)
+            image_array = np.clip(
+                image_array,
+                -128,
+                127
+            ).astype(np.int8)
+
     else:
         image_array = image_array.astype(input_dtype)
 
     return image_array
+
+
 # ============================================================
 # PREDICTION
 # ============================================================
@@ -403,7 +431,6 @@ def predict_image(image, interpreter, model_key):
         output_details[0]["index"]
     )[0]
 
-    # Dequantize quantized model output if necessary.
     output_dtype = output_details[0]["dtype"]
     output_scale, output_zero_point = output_details[0]["quantization"]
 
@@ -413,7 +440,9 @@ def predict_image(image, interpreter, model_key):
         ) * output_scale
 
     return predictions
-    # ============================================================
+
+
+# ============================================================
 # WEATHER FUNCTIONS
 # ============================================================
 
@@ -584,26 +613,19 @@ def get_smart_advice(
             api_key=st.secrets["openai_key"]
         )
 
+        humidity = "Not available"
+        precipitation = "Not available"
+        weather_text = "Weather information is unavailable"
+
         if weather:
             weather_text = (
-                f"Temperature: {weather['temp']}, "
-                f"Humidity: {weather['humidity']}, "
-                f"Rain: {weather['precip']}, "
-                f"Sky: {weather['condition']}"
+                f"Temperature: {weather.get('temp', 'N/A')}, "
+                f"Humidity: {weather.get('humidity', 'N/A')}, "
+                f"Rain: {weather.get('precip', 'N/A')}, "
+                f"Sky: {weather.get('condition', 'N/A')}"
             )
-
-            humidity = weather.get(
-                "humidity",
-                "Not available"
-            )
-
-            # The remaining original lines in this section
-            # are not fully visible in the photographs.
-
-        else:
-            weather_text = "Weather information is unavailable"
-            humidity = "Not available"
-            precipitation = "Not available"
+            humidity = weather.get("humidity", "Not available")
+            precipitation = weather.get("precip", "Not available")
 
         issues = []
 
@@ -663,7 +685,9 @@ laboratory diagnosis. Keep the answer structured and concise.
             "AI Agronomist is currently unavailable. "
             f"Error: {error}"
         )
-       # ============================================================
+
+
+# ============================================================
 # SIDEBAR
 # ============================================================
 
@@ -1001,4 +1025,4 @@ if uploaded_file:
                 except Exception as analysis_error:
                     st.error(
                         f"Analysis Error: {analysis_error}"
-                    ) 
+                    )
