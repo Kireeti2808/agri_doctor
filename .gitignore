@@ -14,3 +14,6 @@ training/rice_run*/
 *.keras
 .pytest_cache/
 staging/
+# Streamlit local secrets
+.streamlit/secrets.toml
+.streamlit/secrets.to
