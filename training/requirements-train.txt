@@ -1,0 +1,4 @@
+-r ../requirements.txt
+tensorflow==2.20.*
+scikit-learn
+pytest

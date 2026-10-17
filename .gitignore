@@ -1,0 +1,16 @@
+.streamlit/secrets.toml
+.venv/
+__pycache__/
+*.tflite
+*_downloading.*
+.impeccable/review/
+.DS_Store
+.impeccable/hook.cache.json
+.impeccable/questions/
+training/.venv/
+training/data/
+training/rice_run*/
+*.h5
+*.keras
+.pytest_cache/
+staging/
