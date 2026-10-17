@@ -35,6 +35,8 @@ from agri_core import (
     classify_image,
     classify_soil_moisture,
     assess_leaf_image,
+    block_applies,
+    block_for_key,
     describe_advice_error,
     image_fingerprint,
     image_for_assessment,
@@ -327,6 +329,9 @@ st.markdown(
     }
     .review-note ul { margin: 0.3rem 0 0; padding-left: 1.1rem; }
     .verdict + div .review-note, .review-note.after-verdict { margin-top: 1rem; }
+    /* Gemini assessment and Why / Next step boxes only */
+    .review-note.ai-panel b:not(:first-child) { margin-top: 1rem; }
+    .review-note.ai-panel p + p { margin-top: 0.5rem; }
 
     .review-pill {
         display: inline-block;
@@ -651,7 +656,10 @@ st.markdown(
     [data-testid="stAlert"] { border-radius: 4px; }
 
     @media (max-width: 640px) {
-        .block-container { padding-top: 1.5rem; }
+        /* The header strip holds the sidebar toggle: make it opaque so
+           scrolled content passes under it, and start content below it. */
+        [data-testid="stHeader"] { background: var(--mat); }
+        .block-container { padding-top: 4.5rem; }
         .ghost-chips, .chip-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem 1rem; }
         .chip-class { font-size: 1rem; }
         .chip-region { display: none; }
@@ -1348,7 +1356,7 @@ def render_ai_analysis(ai, summary):
 
     st.markdown(
         f"""
-        <div class="review-note">
+        <div class="review-note ai-panel">
             <b>{html.escape(condition)}</b>
             <p>Crop seen: {html.escape(assessment["crop"])} · Closest app
             label: {html.escape(label_text)} · Gemini's own certainty:
@@ -1376,7 +1384,7 @@ def render_ai_analysis(ai, summary):
             {html.escape(condition.upper())}, {html.escape(assessment["certainty"].upper())}
             CERTAINTY (ITS OWN RATING) · REPORTED SEPARATELY, NEVER AVERAGED</p>
         </div>
-        <div class="review-note after-verdict">
+        <div class="review-note ai-panel after-verdict">
             <b>Why</b>
             {html_list(comparison["reasons"])}
             <b>Next step</b>
@@ -1544,6 +1552,11 @@ enable_ai = st.sidebar.toggle(
     "Enable AI agronomist",
     value=True
 )
+
+# A session pause belongs to the key it was recorded with. Without this, a
+# "no key" pause outlived the key being added, until the tab was reloaded.
+if not block_applies(st.session_state.get("advice_blocked"), ai_settings()[0]):
+    st.session_state.pop("advice_blocked", None)
 
 # Filled at the end of the run, after any diagnosis in this run has had
 # the chance to pause prescriptions.
@@ -1931,34 +1944,55 @@ if uploaded_file:
             for name, score in route["scores"].items()
         )
 
-        st.markdown(
-            f"""
-            <div class="crop-page">
-                <div class="crop-name">{final_crop_choice or "Choose the crop"}</div>
-                <div class="notation" style="margin-top:.55rem">
-                    {route_notation} · {route_status}
-                </div>
-                <div class="meter">
-                    <b style="width:{route['confidence']:.1f}%;
-                              background:var(--soil)"></b>
-                </div>
-                <div class="notation router-scores">{router_scores}</div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+        # Filled after this run's analysis (see render_crop_header), so a
+        # result produced by Analyze All in this same run is reflected.
+        crop_header_slot = st.empty()
+        crop_note_slot = st.empty()
 
-        if route["needs_review"] and not crop_set_manually:
-            st.markdown(
+        def render_crop_header(showing_suggestion):
+            if final_crop_choice:
+                crop_title = final_crop_choice
+            elif showing_suggestion:
+                crop_title = f"{suggested_crop} (router suggestion)"
+            else:
+                crop_title = "Choose the crop"
+
+            crop_header_slot.markdown(
                 f"""
-                <div class="review-note">
-                    <b>Confirm the crop</b>
-                    <p>{html.escape(route["reason"])} Choose the crop above
-                    to continue; the diagnosis uses that crop's model.</p>
+                <div class="crop-page">
+                    <div class="crop-name">{html.escape(crop_title)}</div>
+                    <div class="notation" style="margin-top:.55rem">
+                        {route_notation} · {route_status}
+                    </div>
+                    <div class="meter">
+                        <b style="width:{route['confidence']:.1f}%;
+                                  background:var(--soil)"></b>
+                    </div>
+                    <div class="notation router-scores">{router_scores}</div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
+
+            # Once results exist for the suggestion, the router's doubt is
+            # listed under "Why this needs a second look" instead.
+            if (
+                route["needs_review"]
+                and not crop_set_manually
+                and not showing_suggestion
+            ):
+                crop_note_slot.markdown(
+                    f"""
+                    <div class="review-note">
+                        <b>Confirm the crop</b>
+                        <p>{html.escape(route["reason"])} Choose the crop above
+                        to continue; the diagnosis uses that crop's model.</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            else:
+                crop_note_slot.empty()
 
         # Analyze All runs on the crop a person chose, or else on the
         # router's suggestion; a suggestion that needs review keeps its
@@ -2096,7 +2130,9 @@ if uploaded_file:
                         )
 
                     if ai_analysis["blocked"]:
-                        st.session_state["advice_blocked"] = ai_analysis["blocked"]
+                        st.session_state["advice_blocked"] = block_for_key(
+                            ai_analysis["blocked"], api_key
+                        )
 
                     advice = ai_analysis["advice"]
 
@@ -2110,7 +2146,9 @@ if uploaded_file:
                             advice = get_smart_advice(**advice_kwargs)
 
                         if not advice["ok"] and advice["blocks_session"]:
-                            st.session_state["advice_blocked"] = advice
+                            st.session_state["advice_blocked"] = block_for_key(
+                                advice, ai_settings()[0]
+                            )
 
                 diagnosis = {
                     "crop": model_key,
@@ -2139,6 +2177,14 @@ if uploaded_file:
                 st.error(
                     f"Analysis error: {analysis_error}"
                 )
+
+    render_crop_header(
+        showing_suggestion=(
+            final_crop_choice is None
+            and diagnosis is not None
+            and diagnosis["crop"] == suggested_crop
+        )
+    )
 
     if diagnosis:
         summary = diagnosis["summary"]

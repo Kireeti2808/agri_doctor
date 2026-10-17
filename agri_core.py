@@ -1033,6 +1033,27 @@ def resolve_api_key(secrets, environ):
     return _setting(secrets, environ, API_KEY_NAME, API_KEY_NAME)
 
 
+def key_fingerprint(api_key):
+    """One-way tag for the configured key, so state can follow key changes."""
+    if not api_key:
+        return None
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
+
+
+def block_for_key(error, api_key):
+    """A session pause, remembered with the key it was caused by."""
+    return {**error, "key_fingerprint": key_fingerprint(api_key)}
+
+
+def block_applies(blocked, api_key):
+    """
+    A pause holds only while the same key (or the same absence of a key) is
+    configured. Adding a key, or replacing an invalid or out-of-quota one,
+    lifts it; the same key stays paused.
+    """
+    return bool(blocked) and blocked.get("key_fingerprint") == key_fingerprint(api_key)
+
+
 def resolve_gemini_model(secrets, environ):
     return (
         _setting(secrets, environ, "gemini_model", "GEMINI_MODEL")

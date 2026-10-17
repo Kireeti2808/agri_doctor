@@ -178,3 +178,51 @@ def test_run_diagnosis_alone_makes_no_gemini_assessment(app):
     assert "Disease: Common Rust" in text
     assert "Independent AI assessment" not in text
     assert fake.image_calls == []
+
+
+def test_adding_a_key_lifts_the_missing_key_pause_in_the_same_session(app):
+    # Regression: the "no key" pause was stored for the session and never
+    # re-checked, so the message persisted after GEMINI_API_KEY was added.
+    fake = FakeGemini()
+    at = click(app(fake, key=None), "Analyze All")
+    assert "no Gemini key is configured" in page_text(at)
+    assert fake.clients == 0
+
+    at.secrets["GEMINI_API_KEY"] = KEY
+    click(at, "Analyze All")
+    text = page_text(at)
+    assert "no Gemini key is configured" not in text
+    assert "Prescriptions paused" not in text
+    assert "Combined interpretation: Agreement" in text
+    assert fake.clients >= 1
+
+
+OLD_KEY = "old-key-not-real"
+
+
+class RotatingKeys(FakeGemini):
+    """Rejects OLD_KEY as invalid; works with KEY."""
+
+    def factory(self, api_key):
+        self.clients += 1
+        self.error = errors.ClientError(400, {"error": {
+            "code": 400, "status": "INVALID_ARGUMENT", "message": "API key not valid",
+            "details": [{"reason": "API_KEY_INVALID"}]}}) if api_key == OLD_KEY else None
+        return self
+
+
+def test_invalid_key_stays_paused_until_the_key_is_replaced(app):
+    fake = RotatingKeys()
+    at = click(app(fake, key=OLD_KEY), "Analyze All")
+    assert "The Gemini key is invalid" in page_text(at)
+    assert fake.clients == 1
+
+    click(at, "Analyze All")
+    assert fake.clients == 1  # same key: still paused, no new request
+
+    at.secrets["GEMINI_API_KEY"] = KEY
+    click(at, "Analyze All")
+    text = page_text(at)
+    assert "Combined interpretation: Agreement" in text
+    assert fake.clients == 1 + 2  # new key: assessment and prescription
+    assert core.key_fingerprint(OLD_KEY) not in text and OLD_KEY not in text

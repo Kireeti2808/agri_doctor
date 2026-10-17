@@ -488,3 +488,24 @@ def test_ml_thresholds_are_unchanged():
     assert core.ROUTER_CONFUSABLE == {"Maize", "Rice"}
     assert core.DETECTION_THRESHOLD == 50.0
     assert core.MIN_QUADRANT_AGREEMENT == 2
+
+
+# ---- a session pause follows the configured key ----
+
+def test_missing_key_pause_lifts_when_a_key_is_added():
+    pause = core.block_for_key({"kind": "missing_key"}, None)
+    assert core.block_applies(pause, None) is True
+    assert core.block_applies(pause, KEY) is False
+
+
+def test_invalid_key_pause_holds_for_same_key_and_lifts_for_a_new_one():
+    pause = core.block_for_key({"kind": "auth"}, "old-key-not-real")
+    assert core.block_applies(pause, "old-key-not-real") is True
+    assert core.block_applies(pause, KEY) is False
+    assert core.block_applies(None, KEY) is False
+
+
+def test_pause_keeps_only_a_one_way_fingerprint_of_the_key():
+    pause = core.block_for_key({"kind": "quota", "message": "m"}, KEY)
+    assert KEY not in json.dumps(pause)
+    assert pause["key_fingerprint"] == core.key_fingerprint(KEY)
